@@ -1,0 +1,34 @@
+{
+  "mode": "mock",
+  "director": {
+    "backend": "openrouter",
+    "model": "anthropic/claude-opus-5.5",
+    "opencode_model": "openai/gpt-6.1-sol#high",
+    "opencode_agent": "smart-harness-director",
+    "max_output_tokens": 1400,
+    "max_context_chars": 22000,
+    "timeout_seconds": 180,
+    "price_input_per_million": 4.0,
+    "price_output_per_million": 20.0,
+    "request_price_multiplier": 1.5
+  },
+  "worker": {
+    "backend": "opencode",
+    "model": "openrouter/z-ai/glm-5.3-flash",
+    "agent": "build",
+    "read_only_agent": "plan",
+    "timeout_seconds": 1800,
+    "max_report_chars": 4000,
+    "working_directory": null,
+    "workspace_hints": [],
+    "auto_approve": false
+  },
+  "limits": {
+    "premium_budget_usd": 0.5,
+    "max_rounds": 8,
+    "max_director_calls": 9,
+    "max_workers_per_round": 3,
+    "max_total_workers": 18,
+    "max_parallel_workers": 3
+  }
+}
