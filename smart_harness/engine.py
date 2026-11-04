@@ -5,6 +5,8 @@ import json
 import os
 import time
 import threading
+import math
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
@@ -22,18 +24,6 @@ Log = Callable[[str], None]
 
 class BudgetError(RuntimeError):
     pass
-
-
-def estimated_reservation(cfg: dict[str, Any], system: str, user: str) -> float:
-    """Approximate upper-bound preflight, not a billing guarantee.
-
-    Assume one paid input token per character for ASCII-heavy tasks; actual
-    provider tokenization, pricing, retries, and reasoning can be different.
-    """
-    return round((
-        len(system + user) * float(cfg["price_input_per_million"]) / 1_000_000
-        + int(cfg["max_output_tokens"]) * float(cfg["price_output_per_million"]) / 1_000_000
-    ) * float(cfg["request_price_multiplier"]), 6)
 
 
 def subscription_equivalent(usage: dict[str, Any], cfg: dict[str, Any]) -> float | None:
@@ -59,6 +49,8 @@ class Engine:
         self.cfg = cfg
         self.log = log
         self._lock = threading.RLock()
+        self.prices = None
+        self.prices_updated_at = 0.0
         mode = cfg["mode"]
         if director is not None:
             self.director = director
@@ -75,18 +67,13 @@ class Engine:
 
     def _premium_decision(self, state: dict[str, Any]) -> dict[str, Any]:
         limits = self.cfg["limits"]
-        if state["director_calls"] >= int(limits["max_director_calls"]):
-            raise BudgetError("maximum director calls reached")
         system = director_system()
-        user = director_user_message(state, int(self.cfg["director"]["max_context_chars"]))
-        needs_usd_budget = state["mode"] == "live" and self.cfg["director"]["backend"] == "openrouter"
-        reserved = estimated_reservation(self.cfg["director"], system, user) if needs_usd_budget else 0.0
-        current = state["premium_spent_usd"] + state["premium_reserved_usd"]
-        if needs_usd_budget and current + reserved > float(limits["premium_budget_usd"]):
-            raise BudgetError(
-                f"Premium preflight exceeds ${limits['premium_budget_usd']:.2f} budget "
-                f"(already spent/reserved ${current:.3f}, next reserve ${reserved:.3f})."
-            )
+        stipulations = self.cfg["director"].get("review_stipulations", [])
+        if stipulations:
+            system += "\nUser-configured review stipulations:\n" + "\n".join(f"- {item}" for item in stipulations)
+        user = director_user_message(state, None)
+        reserved = 0.0
+        needs_usd_budget = False
         state["director_calls"] += 1
         # Reserve before request: if network fails after billing, do not silently refund budget.
         state["premium_reserved_usd"] = round(state["premium_reserved_usd"] + reserved, 6)
@@ -111,11 +98,68 @@ class Engine:
             "reserved_usd": reserved, "usage": result.usage,
             "context_chars": len(system) + len(user),
             "elapsed_seconds": round(time.monotonic() - started, 3),
-            "model": self.cfg["director"]["model" if needs_usd_budget else "opencode_model"],
-            "api_equivalent_estimate_usd": subscription_equivalent(result.usage, self.cfg["director"]) if result.usage.get("subscription") else None,
+            "model": self.cfg["director"]["model"],
+            "api_equivalent_estimate_usd": None,
         })
+        amount, source = self._cost(result.cost_usd, result.usage, self.cfg["director"]["model"], state["mode"])
+        self._record_cost(state, amount, source)
+        state["events"][-1].update({"budget_cost_usd": amount, "budget_cost_source": source,
+                                    "api_equivalent_estimate_usd": amount if source == "estimated" else None})
         save(state)
-        return parse_decision(result.text, int(limits["max_workers_per_round"]))
+        return parse_decision(result.text)
+
+    def _check_budget(self, state):
+        if state["mode"] == "mock":
+            return
+        if not state["budget_cost_complete"]:
+            raise BudgetError("Cost accounting incomplete; cannot safely enforce the budget")
+        if state["budget_reported_usd"] + state["budget_estimated_usd"] >= self.cfg["limits"]["budget_usd"]:
+            raise BudgetError("USD budget reached; task remains unfinished")
+
+    def _cost(self, reported, usage, model, mode):
+        if mode == "mock":
+            return 0.0, "mock"
+        if isinstance(reported, (int, float)) and not isinstance(reported, bool) and math.isfinite(reported) and reported >= 0:
+            return float(reported), "reported"
+        try:
+            if self.prices is None or time.monotonic() - self.prices_updated_at > 300:
+                with urllib.request.urlopen("https://openrouter.ai/api/v1/models", timeout=15) as response:
+                    self.prices = {m["id"]: m["pricing"] for m in json.load(response)["data"]}
+                self.prices_updated_at = time.monotonic()
+            pricing = self.prices[model.removeprefix("openrouter/")]
+            steps = (usage or {}).get("token_events")
+            if not steps and usage and usage.get("prompt_tokens") is not None:
+                cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+                steps = [{"input": usage["prompt_tokens"] - cached, "output": usage.get("completion_tokens"), "reasoning": 0, "cache": {"read": cached}}]
+            if not steps or ("token_events_complete" in (usage or {}) and not usage["token_events_complete"]):
+                raise ValueError("complete token breakdown unavailable")
+            total = 0.0
+            for step in steps:
+                inp, out, reasoning = step.get("input"), step.get("output"), step.get("reasoning", 0)
+                if any(not isinstance(x, int) or isinstance(x, bool) or x < 0 for x in (inp, out, reasoning)):
+                    raise ValueError("token breakdown unavailable")
+                cache = step.get("cache") or {}
+                size = inp + (cache.get("read") or 0) + (cache.get("write") or 0)
+                rates = pricing
+                for override in sorted(pricing.get("overrides", []), key=lambda x: x.get("min_prompt_tokens", 0)):
+                    if size >= override.get("min_prompt_tokens", 0):
+                        rates = {**rates, **override}
+                p, c = float(rates["prompt"]), float(rates["completion"])
+                w = float(rates.get("input_cache_write", p))
+                if not all(math.isfinite(x) and x >= 0 for x in (p, c, w)):
+                    raise ValueError("invalid price")
+                total += inp * p + (cache.get("write") or 0) * w + (out + reasoning) * c
+            return total, "estimated"
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            self.log(f"Cost unavailable for {model}: {exc}")
+            return None, "unavailable"
+
+    def _record_cost(self, state, amount, source):
+        if amount is None:
+            state["budget_cost_complete"] = False
+        elif source in ("reported", "estimated"):
+            state[f"budget_{source}_usd"] += amount
+        self.log(f"Budget: reported ${state['budget_reported_usd']:.4f} + estimated ${state['budget_estimated_usd']:.4f} / ${self.cfg['limits']['budget_usd']:.2f}")
 
     def _one_worker(self, task: dict[str, Any], state: dict[str, Any]) -> tuple[dict[str, Any], WorkerResult]:
         prompt = task["prompt"]
@@ -152,10 +196,7 @@ class Engine:
         tasks = decision["tasks"]
         count = len(tasks)
         limits = self.cfg["limits"]
-        if state["worker_count"] + count > int(limits["max_total_workers"]):
-            raise BudgetError("maximum total delegated workers reached")
-        if state["worker_cost_reported_usd"] >= float(limits["worker_budget_usd"]):
-            raise BudgetError("reported worker spending reached the worker budget; unknown costs may be higher")
+        self._check_budget(state)
         previous_ids = {e["id"] for e in state["events"] if e.get("kind") == "worker"}
         previous_ids.update(t["id"] for e in state["events"] if e.get("kind") == "dispatch" for t in e.get("tasks", []))
         if any(t["id"] in previous_ids for t in tasks):
@@ -174,14 +215,10 @@ class Engine:
                 raise DecisionError("retry_of references an unknown assignment")
             root = prior.get("retry_root", task["retry_of"]) if prior else task["id"]
             attempts[root] = attempts.get(root, 0) + 1
-            if attempts[root] > int(limits["max_attempts_per_assignment"]):
-                raise BudgetError(f"retry limit reached for {root}; surface the remaining blocker")
             task["retry_root"] = root
             if task.get("review_of"):
                 subject = task["review_of"]
                 reviews[subject] = reviews.get(subject, 0) + 1
-                if reviews[subject] > int(limits["max_reviews_per_subject"]):
-                    raise BudgetError(f"review cycle limit reached for {subject}; surface unresolved findings")
             difficulty = task.get("difficulty", "routine")
             if prior and prior.get("status") in {"failed", "interrupted"} and difficulty == "routine":
                 difficulty = "medium"
@@ -206,6 +243,8 @@ class Engine:
         parallel = (decision.get("parallel", False) and count > 1 and
                     all(t.get("read_only", False) for t in tasks))
         def record(task: dict[str, Any], result: WorkerResult, started: float) -> None:
+            amount, source = self._cost(result.cost_usd if result.cost_complete else None, result.usage, task["selected_model"], state["mode"])
+            self._record_cost(state, amount, source)
             path = save_worker_output(state, task["id"], result.full_output)
             state["events"].append({
                 "kind": "worker", "id": task["id"], "at": utcnow(),
@@ -216,7 +255,8 @@ class Engine:
                 "cost_complete": result.cost_complete and result.cost_usd is not None,
                 "elapsed_seconds": round(time.monotonic() - started, 3),
                 "model": task["selected_model"], "usage": result.usage or None,
-                "estimated_cost_usd": None,
+                "estimated_cost_usd": amount if source == "estimated" else None,
+                "budget_cost_usd": amount, "budget_cost_source": source,
                 "retry_of": task.get("retry_of"),
             })
             assignments[task["id"]].update({"status": "completed" if result.succeeded else "failed",
@@ -229,7 +269,7 @@ class Engine:
             self.log(f"  {task['id']}: {'ok' if result.succeeded else 'failed'}; report: {path}")
             save(state)
         if parallel:
-            with ThreadPoolExecutor(max_workers=min(count, int(limits["max_parallel_workers"]))) as pool:
+            with ThreadPoolExecutor(max_workers=count) as pool:
                 futures = {}
                 def invoke(task: dict[str, Any]) -> tuple[dict[str, Any], WorkerResult, float]:
                     with self._lock:
@@ -246,7 +286,7 @@ class Engine:
                         record(task, result, started)
         else:
             for task in tasks:
-                if state["worker_cost_reported_usd"] >= float(limits["worker_budget_usd"]):
+                if not state["budget_cost_complete"] or state["budget_reported_usd"] + state["budget_estimated_usd"] >= float(limits["budget_usd"]):
                     for pending in tasks:
                         if assignments[pending["id"]]["status"] == "queued":
                             assignments[pending["id"]].update({"status": "blocked", "note": "Worker budget reached before this assignment started."})
@@ -273,6 +313,10 @@ class Engine:
 
     def _run(self, state: dict[str, Any]) -> dict[str, Any]:
         initialize(state)
+        if "budget_cost_complete" not in state:
+            state["budget_reported_usd"] = 0.0
+            state["budget_estimated_usd"] = 0.0
+            state["budget_cost_complete"] = not (state.get("director_calls", 0) or state.get("worker_count", 0))
         if state["status"] == "done":
             raise ValueError("Task already completed. Start a new task instead.")
         # Interrupted or crashed dispatch should not be silently rerun.
@@ -288,6 +332,7 @@ class Engine:
             self.director.calls = state["director_calls"]
         while True:
             try:
+                self._check_budget(state)
                 decision = self._premium_decision(state)
                 state.pop("requested_reports", None)
                 apply_updates(state, decision.get("ledger_updates"))
@@ -324,8 +369,7 @@ class Engine:
                                         "action": decision["action"]})
                 save(state)
                 if decision["action"] == "dispatch":
-                    if state["round"] >= int(self.cfg["limits"]["max_rounds"]):
-                        raise BudgetError("Maximum worker rounds reached; no completion verified")
+                    self._check_budget(state)
                     self._dispatch(state, decision)
                 elif decision["action"] == "finish":
                     if not any(e.get("kind") == "worker" for e in state["events"]):

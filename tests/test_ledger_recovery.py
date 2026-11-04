@@ -194,17 +194,18 @@ class LedgerRecoveryTests(unittest.TestCase):
         class Costly:
             def call(self, prompt, read_only):
                 return WorkerResult('ok', 'ok', True, 0.1, True)
-        self.cfg['limits']['worker_budget_usd'] = 0.1
-        state = new_task('task', 'mock')
+        self.cfg['limits']['budget_usd'] = 0.1
+        self.cfg['mode'] = 'live'
+        state = new_task('task', 'live')
         director = Director([{'action':'dispatch','tasks':[{'id':'one','prompt':'one'}, {'id':'two','prompt':'two'}]}])
+        director.call = lambda system, prompt: DirectorResult(json.dumps({'action':'dispatch','tasks':[{'id':'one','prompt':'one'}, {'id':'two','prompt':'two'}]}), 0.0, {})
         out = Engine(self.cfg, director=director, worker=Costly(), log=lambda _: None).run(state)
         self.assertEqual(out['status'], 'budget_exhausted')
         self.assertEqual(out['assignments']['two']['status'], 'blocked')
         self.assertEqual(len([e for e in out['events'] if e.get('kind') == 'worker']), 1)
 
-    def test_failed_retry_escalates_and_retry_limit_blocks(self):
+    def test_failed_retry_escalates_without_count_limit(self):
         self.cfg['worker']['medium_model'] = 'provider/stronger'
-        self.cfg['limits']['max_attempts_per_assignment'] = 2
         class Fail:
             def call(self, prompt, read_only):
                 return WorkerResult('failed', 'failed', False, None, False)
@@ -213,11 +214,12 @@ class LedgerRecoveryTests(unittest.TestCase):
             {'action':'dispatch','tasks':[{'id':'one','prompt':'do'}]},
             {'action':'dispatch','tasks':[{'id':'two','prompt':'retry','retry_of':'one'}]},
             {'action':'dispatch','tasks':[{'id':'three','prompt':'retry','retry_of':'two'}]},
+            {'action':'finish','answer':'partial'},
         ])
         out = Engine(self.cfg, director=director, worker=Fail(), log=lambda _: None).run(state)
-        self.assertEqual(out['status'], 'budget_exhausted')
-        self.assertIn('retry limit', out['answer'])
+        self.assertEqual(out['status'], 'partial')
         self.assertEqual(next(e for e in out['events'] if e.get('id') == 'two')['model'], 'provider/stronger')
+        self.assertEqual(out['worker_count'], 3)
 
     @unittest.skipIf(os.name == 'nt', 'POSIX executable fixture')
     def test_live_process_streams_identity_and_usage(self):

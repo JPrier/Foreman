@@ -12,7 +12,7 @@ class DecisionError(ValueError):
     pass
 
 
-def parse_decision(raw: str, max_tasks: int) -> dict[str, Any]:
+def parse_decision(raw: str, max_tasks: int | None = None) -> dict[str, Any]:
     text = raw.strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
@@ -48,7 +48,7 @@ def parse_decision(raw: str, max_tasks: int) -> dict[str, Any]:
         request_ids.add(ident)
     if action == "dispatch":
         tasks = value.get("tasks")
-        if not isinstance(tasks, list) or not 1 <= len(tasks) <= max_tasks:
+        if not isinstance(tasks, list) or not tasks or (max_tasks is not None and len(tasks) > max_tasks):
             raise DecisionError(f"dispatch requires 1..{max_tasks} tasks")
         ids = set()
         for task in tasks:
@@ -100,7 +100,7 @@ Keep memory <= 6000 characters. Task ids must be unique across the whole task se
 Do NOT include markdown fences or explanations outside JSON."""
 
 
-def director_user_message(state: dict[str, Any], max_chars: int) -> str:
+def director_user_message(state: dict[str, Any], max_chars: int | None) -> str:
     """Send objective, stable director memory, and recent task outcomes, not raw transcripts."""
     events = state.get("events", [])
     # Include recent work. If too long, drop oldest events, never truncate original objective.
@@ -126,10 +126,10 @@ def director_user_message(state: dict[str, Any], max_chars: int) -> str:
             item.pop("tasks", None)  # the worker outcomes are sufficient
         recent.insert(0, item)
         packet = json.dumps({**prefix, "recent_events": recent}, ensure_ascii=False)
-        if len(packet) > max_chars:
+        if max_chars is not None and len(packet) > max_chars:
             recent.pop(0)
             break
     packet = json.dumps({**prefix, "recent_events": recent}, ensure_ascii=False)
-    if len(packet) > max_chars:
+    if max_chars is not None and len(packet) > max_chars:
         raise ValueError("Objective, follow-ups, or director memory exceed the configured context limit; no requirements were dropped")
     return "Review progress and respond with your next JSON decision:\n" + packet

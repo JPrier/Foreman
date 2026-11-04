@@ -3,18 +3,9 @@
   "director": {
     "backend": "openrouter",
     "model": "anthropic/claude-opus-5.5",
-    "opencode_model": "openai/gpt-6.1-sol#high",
-    "opencode_agent": "smart-harness-director",
-    "max_output_tokens": 1400,
-    "max_context_chars": 22000,
-    "timeout_seconds": 180,
-    "price_input_per_million": 4.0,
-    "price_output_per_million": 20.0,
-    "request_price_multiplier": 1.5,
-    "equivalent_input_per_million": null,
-    "equivalent_output_per_million": null,
-    "equivalent_cache_read_per_million": null,
-    "equivalent_cache_write_per_million": null
+    "agent": "smart-harness-director",
+    "review_stipulations": [],
+    "timeout_seconds": 180
   },
   "worker": {
     "backend": "opencode",
@@ -32,14 +23,6 @@
     "auto_approve": false
   },
   "limits": {
-    "premium_budget_usd": 0.5,
-    "worker_budget_usd": 5.0,
-    "max_rounds": 8,
-    "max_director_calls": 9,
-    "max_workers_per_round": 3,
-    "max_total_workers": 18,
-    "max_parallel_workers": 3,
-    "max_attempts_per_assignment": 3,
-    "max_reviews_per_subject": 3
+    "budget_usd": 50.0
   }
 }

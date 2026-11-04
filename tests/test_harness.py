@@ -10,7 +10,7 @@ from smart_harness.backends import DirectorResult, WorkerResult, run_opencode
 from smart_harness.cli import main
 from smart_harness.config import DEFAULTS, load_config
 from smart_harness.contracts import DecisionError, director_user_message, parse_decision
-from smart_harness.engine import Engine, estimated_reservation
+from smart_harness.engine import Engine
 from smart_harness.storage import load, new_task
 
 
@@ -97,11 +97,12 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(out["status"], "partial")
         self.assertFalse(next(e for e in out["events"] if e.get("kind") == "worker")["ok"])
 
-    def test_preflight_blocks_before_paid_call(self):
+    def test_usd_budget_blocks_before_next_call(self):
         self.cfg["mode"] = "live"
-        self.cfg["limits"]["premium_budget_usd"] = 0.001
+        state = new_task("task", "live")
+        state["budget_reported_usd"] = self.cfg["limits"]["budget_usd"]
         director = SequenceDirector([])
-        out = Engine(self.cfg, director=director, worker=CollectWorker(), log=lambda _: None).run(new_task("task", "live"))
+        out = Engine(self.cfg, director=director, worker=CollectWorker(), log=lambda _: None).run(state)
         self.assertEqual(out["status"], "budget_exhausted")
         self.assertEqual(len(director.seen), 0)
 
@@ -161,11 +162,6 @@ class HarnessTest(unittest.TestCase):
         f.write_text('{"force_paid":true}', encoding="utf-8")
         with self.assertRaises(ValueError):
             load_config(f)
-
-    def test_cost_reservation_grows_with_prompt(self):
-        a = estimated_reservation(self.cfg["director"], "sys", "short")
-        b = estimated_reservation(self.cfg["director"], "sys", "long" * 10000)
-        self.assertGreater(b, a)
 
     def test_opencode_json_event_extraction(self):
         from unittest.mock import Mock

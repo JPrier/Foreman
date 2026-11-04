@@ -38,16 +38,13 @@ class RecoveryTests(unittest.TestCase):
         Engine(self.cfg, worker=Worker(), log=lambda _: None)._dispatch(state, decision)
         self.assertEqual(len([e for e in load(state['id'])['events'] if e['kind'] == 'worker']), 2)
 
-    def test_total_worker_limit_blocks_before_execution(self):
-        class Worker:
-            def call(self, *args):
-                self.fail('worker should not run')
-        state = new_task('task', 'mock')
-        self.cfg['limits']['max_total_workers'] = 1
-        decision = {'tasks': [{'id': 'a', 'prompt': 'a'}, {'id': 'b', 'prompt': 'b'}]}
+    def test_usd_budget_blocks_before_execution(self):
+        state = new_task('task', 'live')
+        state['budget_reported_usd'] = self.cfg['limits']['budget_usd']
+        decision = {'tasks': [{'id': 'a', 'prompt': 'a'}]}
         from smart_harness.engine import BudgetError
         with self.assertRaises(BudgetError):
-            Engine(self.cfg, worker=Worker())._dispatch(state, decision)
+            Engine(self.cfg, log=lambda _: None)._dispatch(state, decision)
         self.assertEqual(load(state['id'])['worker_count'], 0)
 
     def test_interrupted_dispatch_followup_preserves_warning(self):

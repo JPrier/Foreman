@@ -16,7 +16,7 @@ COMMANDS = {"run", "continue", "status", "history", "show", "init", "install-dir
 
 def make_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="smart-coder", description="General-purpose premium-director/cheap-worker harness")
-    p.add_argument("--config", type=Path, help="Optional config file (defaults to ~/.smart-harness/config.json)")
+    p.add_argument("--config", type=Path, help="Optional config file (defaults to ~/.smart-harness/config.jsonc; legacy config.json supported)")
     modes = p.add_mutually_exclusive_group()
     modes.add_argument("--mock", action="store_true", help="Offline demonstration; no real work")
     modes.add_argument("--live", action="store_true", help="Use configured live providers (credentials required)")
@@ -45,6 +45,8 @@ def _shorthand(args: list[str]) -> list[str]:
 
 
 def _print_status(state: dict) -> None:
+    if 'budget_cost_complete' in state:
+        print(f"Budget costs: reported ${state.get('budget_reported_usd', 0):.4f} | estimated ${state.get('budget_estimated_usd', 0):.4f}" + ("" if state['budget_cost_complete'] else " | incomplete"))
     print(f"Task: {state['id']} | status: {state['status']} | rounds: {state['round']} | workers: {state['worker_count']}")
     director_events = [e for e in state.get("events", []) if e.get("kind") == "director"]
     unknown_cost = sum(e.get("cost_usd") is None for e in director_events)
