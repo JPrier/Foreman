@@ -20,10 +20,18 @@ DEFAULTS: dict[str, Any] = {
         "price_input_per_million": 4.0,
         "price_output_per_million": 20.0,
         "request_price_multiplier": 1.5,
+        "equivalent_input_per_million": None,
+        "equivalent_output_per_million": None,
+        "equivalent_cache_read_per_million": None,
+        "equivalent_cache_write_per_million": None,
     },
     "worker": {
         "backend": "opencode",
         "model": "openrouter/z-ai/glm-5.3-flash",
+        "medium_model": "openrouter/z-ai/glm-5.3-flash",
+        "high_model": "openrouter/z-ai/glm-5.3-flash",
+        "long_assignment_seconds": 900,
+        "expensive_assignment_usd": 0.25,
         "agent": "build",
         "read_only_agent": "plan",
         "timeout_seconds": 1800,
@@ -34,11 +42,14 @@ DEFAULTS: dict[str, Any] = {
     },
     "limits": {
         "premium_budget_usd": 0.5,
+        "worker_budget_usd": 5.0,
         "max_rounds": 8,
         "max_director_calls": 9,
         "max_workers_per_round": 3,
         "max_total_workers": 18,
         "max_parallel_workers": 3,
+        "max_attempts_per_assignment": 3,
+        "max_reviews_per_subject": 3,
     },
 }
 
@@ -80,9 +91,15 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
     for k, v in config["limits"].items():
         if not isinstance(v, (int, float)) or v <= 0:
             raise ValueError(f"limits.{k} must be positive")
-    for k in ("max_rounds", "max_director_calls", "max_workers_per_round", "max_total_workers", "max_parallel_workers"):
+    for k in ("max_rounds", "max_director_calls", "max_workers_per_round", "max_total_workers", "max_parallel_workers", "max_attempts_per_assignment", "max_reviews_per_subject"):
         if not isinstance(config["limits"][k], int):
             raise ValueError(f"limits.{k} must be an integer")
+    for key in ("long_assignment_seconds", "expensive_assignment_usd"):
+        if not isinstance(config["worker"][key], (int, float)) or config["worker"][key] <= 0:
+            raise ValueError(f"worker.{key} must be positive")
+    for key in ("model", "medium_model", "high_model"):
+        if not isinstance(config["worker"][key], str) or not config["worker"][key].strip():
+            raise ValueError(f"worker.{key} must be a non-empty OpenCode model ID")
     if int(config["director"]["max_output_tokens"]) <= 0:
         raise ValueError("director.max_output_tokens must be positive")
     if int(config["director"]["max_context_chars"]) < 2000:
@@ -91,6 +108,10 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
         for key in ("price_input_per_million", "price_output_per_million", "request_price_multiplier"):
             if not isinstance(config["director"][key], (int, float)) or config["director"][key] <= 0:
                 raise ValueError(f"director.{key} must be positive")
+    for key in ("equivalent_input_per_million", "equivalent_output_per_million", "equivalent_cache_read_per_million", "equivalent_cache_write_per_million"):
+        value = config["director"][key]
+        if value is not None and (not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0):
+            raise ValueError(f"director.{key} must be null or nonnegative")
     return config
 
 

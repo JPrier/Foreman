@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,36 @@ def task_dir(task_id: str) -> Path:
     if not task_id.startswith("task_") or not task_id[5:].isalnum():
         raise ValueError("invalid task id")
     return root() / "tasks" / task_id
+
+
+@contextmanager
+def execution_lock(task_id: str):
+    """One coordinator per task; OS releases the lock if its owner dies."""
+    path = task_dir(task_id) / "run.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as stream:
+        stream.seek(0, os.SEEK_END)
+        if stream.tell() == 0:
+            stream.write(b"0")
+            stream.flush()
+        stream.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise RuntimeError("Another coordinator is already running this task") from exc
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
 def atomic_json(path: Path, obj: dict[str, Any]) -> None:

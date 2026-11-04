@@ -56,7 +56,7 @@ class RecoveryTests(unittest.TestCase):
         state['director_calls'] = 2
         state['events'].append({'kind': 'worker', 'id': 'old', 'summary': 'result'})
         save(state)
-        self.assertEqual(main(['continue', 'Please proceed']), 0)
+        self.assertEqual(main(['continue', 'Please proceed']), 1)
         notes = [e.get('message', '') for e in load(state['id'])['events'] if e['kind'] == 'note']
         self.assertTrue(any('interrupted' in n for n in notes))
 

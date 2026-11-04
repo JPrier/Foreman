@@ -1,0 +1,13 @@
+# Repeatable cost and reliability comparison
+
+1. Define a representative, fixed task set before running either method. Record each objective, acceptance criteria, starting snapshot, constraints, delivery destination, and a unique task ID. Use separate copies of the same starting state and the same tools, permissions, and external inputs. Do not expose results from one method to the other. Include non-code tasks where relevant.
+2. Run each task with Foreman and with direct GPT-6 orchestration. Record model IDs, configuration, dates, time limits, retries, changes, review findings, evidence, final delivery and human intervention. Rotate method order and repeat tasks when feasible. Record failed, timed-out and interrupted runs, not only successes.
+3. Have a reviewer inspect both delivered artifacts against the same criteria and document confirmed findings and severity. `outcome_correct` and `delivery_correct` should be booleans only after adjudication; otherwise use `null`. Do not infer correctness from a model's final message. Record reviewer time as human effort if included in the comparison, and make the policy consistent.
+4. Export one JSON object per run into JSONL. Both methods use the same `task_id` and distinct `method` values `foreman` and `direct`. Use numeric values or `null` for unknowns. Include `review_findings` as the number of independently confirmed findings. Record input/output/cache counts separately; do not add cache reads to uncached input without understanding the provider's accounting. Actual reported charges and subscription API-equivalent estimates are separate fields; subscription estimates are not charges or remaining quota. Include screenshots/logs and pricing assumptions as external provenance.
+5. Run `python tools/compare_runs.py comparison.jsonl`. It reports paired totals and known/unknown counts and separately lists unpaired runs. Compare verified outcomes and delivery first, then total human time, elapsed time, retries, findings, actual costs and estimated usage. A lower nominal model price alone does not establish a saving. This script cannot produce a meaningful real-world comparison until equivalent direct and Foreman runs are collected and adjudicated.
+
+Example row (illustrative, not a benchmark result):
+
+```json
+{"task_id":"task-a","method":"foreman","outcome_correct":null,"delivery_correct":null,"review_findings":null,"elapsed_seconds":null,"human_minutes":null,"retries":null,"reported_provider_cost_usd":null,"subscription_equivalent_estimate_usd":null,"input_tokens":null,"output_tokens":null,"cache_read_tokens":null,"cache_write_tokens":null}
+```

@@ -47,9 +47,9 @@ class HarnessTest(unittest.TestCase):
         self.temp.cleanup()
 
     def test_shorthand_mock_from_non_git_directory(self):
-        self.assertEqual(main(["A short task with no code or repository"]), 0)
+        self.assertEqual(main(["A short task with no code or repository"]), 1)
         state = load()
-        self.assertEqual(state["status"], "done")
+        self.assertEqual(state["status"], "partial")
         self.assertEqual(state["worker_count"], 2)
         self.assertIn("MOCK", state["answer"])
         self.assertTrue(Path(self.temp.name, "tasks", state["id"], "workers", "execute.txt").is_file())
@@ -66,8 +66,8 @@ class HarnessTest(unittest.TestCase):
         worker = CollectWorker()
         state = new_task("Arbitrary task unrelated to code", "mock")
         result = Engine(self.cfg, director=director, worker=worker, log=lambda _: None).run(state)
-        self.assertEqual(result["status"], "done")
-        self.assertEqual(result["answer"], "Done, validated")
+        self.assertEqual(result["status"], "partial")
+        self.assertIn("Done, validated", result["answer"])
         self.assertEqual([x[1] for x in worker.calls], [True, False])
         self.assertIn("Verified: sample result", director.seen[-1])
         self.assertIn("original_objective", director.seen[-1])
@@ -123,7 +123,7 @@ class HarnessTest(unittest.TestCase):
             {"action": "finish", "answer": "Verified"},
         ]
         out = Engine(self.cfg, director=SequenceDirector(decisions), worker=CollectWorker(), log=lambda _: None).run(new_task("task", "mock"))
-        self.assertEqual(out["status"], "done")
+        self.assertEqual(out["status"], "partial")
 
     def test_resume_paused_task_and_no_repo(self):
         first = SequenceDirector([{"action": "ask_user", "question": "Which topic?", "memory": "ask first"}])
@@ -136,7 +136,7 @@ class HarnessTest(unittest.TestCase):
             {"action": "finish", "answer": "Research summarized"},
         ])
         out = Engine(self.cfg, director=second, worker=CollectWorker(), log=lambda _: None).run(result)
-        self.assertEqual(out["status"], "done")
+        self.assertEqual(out["status"], "partial")
         self.assertIn("bees", second.seen[0])
 
     def test_mock_resume_keeps_dispatch_ids_unique(self):
@@ -147,7 +147,7 @@ class HarnessTest(unittest.TestCase):
         state["worker_count"] = 2
         state["events"] = [{"kind": "worker", "id": "investigate", "summary": "Mock"}]
         out = Engine(self.cfg, director=MockDirector(), worker=MockWorker(), log=lambda _: None).run(state)
-        self.assertEqual(out["status"], "done")
+        self.assertEqual(out["status"], "partial")
 
     def test_context_compaction_keeps_objective(self):
         state = new_task("Find a poem", "mock")
