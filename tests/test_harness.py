@@ -94,7 +94,7 @@ class HarnessTest(unittest.TestCase):
             {"action": "finish", "answer": "Worker failed; cannot verify completion."},
         ]
         out = Engine(self.cfg, director=SequenceDirector(decisions), worker=CollectWorker(False), log=lambda _: None).run(new_task("task", "mock"))
-        self.assertEqual(out["status"], "done")
+        self.assertEqual(out["status"], "partial")
         self.assertFalse(next(e for e in out["events"] if e.get("kind") == "worker")["ok"])
 
     def test_preflight_blocks_before_paid_call(self):

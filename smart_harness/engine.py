@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor
+import os
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
 from .backends import (
@@ -76,6 +78,7 @@ class Engine:
         state["events"].append({
             "kind": "director", "at": utcnow(), "cost_usd": result.cost_usd,
             "reserved_usd": reserved, "usage": result.usage,
+            "context_chars": len(system) + len(user),
         })
         save(state)
         return parse_decision(result.text, int(limits["max_workers_per_round"]))
@@ -103,18 +106,18 @@ class Engine:
         state["round"] += 1
         state["worker_count"] += count
         state["events"].append({"kind": "dispatch", "at": utcnow(), "round": state["round"], "tasks": tasks})
+        assignments = state.setdefault("assignments", {})
+        for task in tasks:
+            assignments[task["id"]] = {"prompt": task["prompt"], "read_only": task.get("read_only", False),
+                                       "status": "queued", "created_at": utcnow()}
         state["status"] = "workers_running"
+        state["coordinator_pid"] = os.getpid()
         save(state)
         self.log(f"Round {state['round']}: dispatching {count} worker(s)")
         # Parallel is opt-in by the director AND only read-only assignments.
         parallel = (decision.get("parallel", False) and count > 1 and
                     all(t.get("read_only", False) for t in tasks))
-        if parallel:
-            with ThreadPoolExecutor(max_workers=min(count, int(limits["max_parallel_workers"]))) as pool:
-                results = list(pool.map(lambda task: self._one_worker(task, state), tasks))
-        else:
-            results = [self._one_worker(task, state) for task in tasks]
-        for task, result in results:
+        def record(task: dict[str, Any], result: WorkerResult, started: float) -> None:
             path = save_worker_output(state, task["id"], result.full_output)
             state["events"].append({
                 "kind": "worker", "id": task["id"], "at": utcnow(),
@@ -122,12 +125,34 @@ class Engine:
                 "output_path": path, "session_id": result.session_id,
                 "reported_cost_usd": result.cost_usd,
                 "cost_complete": result.cost_complete,
+                "elapsed_seconds": round(time.monotonic() - started, 3),
             })
+            assignments[task["id"]].update({"status": "completed" if result.succeeded else "failed",
+                "finished_at": utcnow(), "session_id": result.session_id, "output_path": path})
             state["worker_cost_reported_usd"] = round(state["worker_cost_reported_usd"] + result.cost_usd, 6)
             state["worker_cost_complete"] = state["worker_cost_complete"] and result.cost_complete
             self.log(f"  {task['id']}: {'ok' if result.succeeded else 'failed'}; report: {path}")
             save(state)
+        if parallel:
+            with ThreadPoolExecutor(max_workers=min(count, int(limits["max_parallel_workers"]))) as pool:
+                futures = {}
+                for task in tasks:
+                    assignments[task["id"]].update({"status": "running", "started_at": utcnow()})
+                    save(state)
+                    started = time.monotonic()
+                    futures[pool.submit(self._one_worker, task, state)] = started
+                for future in as_completed(futures):
+                    task, result = future.result()
+                    record(task, result, futures[future])
+        else:
+            for task in tasks:
+                assignments[task["id"]].update({"status": "running", "started_at": utcnow()})
+                save(state)
+                started = time.monotonic()
+                _, result = self._one_worker(task, state)
+                record(task, result, started)
         state["status"] = "running"
+        state.pop("coordinator_pid", None)
         save(state)
 
     def run(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -135,6 +160,23 @@ class Engine:
             raise ValueError("Task already completed. Start a new task instead.")
         # Interrupted or crashed dispatch should not be silently rerun.
         if state["status"] == "workers_running":
+            pid = state.get("coordinator_pid")
+            if pid:
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    pass
+                except PermissionError:
+                    raise RuntimeError("Previous coordinator may still be running; cannot safely resume")
+                else:
+                    raise RuntimeError("Previous coordinator may still be running; cannot safely resume")
+            for assignment in state.setdefault("assignments", {}).values():
+                if assignment.get("status") in {"running", "queued"}:
+                    assignment["status"] = "interrupted"
+                    assignment["finished_at"] = utcnow()
+                    assignment["note"] = "Inspect possible side effects and incomplete accounting before retrying."
+                    state["worker_cost_complete"] = False
+            state.pop("coordinator_pid", None)
             state["events"].append({"kind": "note", "at": utcnow(),
                                     "message": "Previous worker dispatch was interrupted. Side effects and completion are unknown. Investigate before repeating."})
             state["status"] = "running"
@@ -155,8 +197,12 @@ class Engine:
                 elif decision["action"] == "finish":
                     if not any(e.get("kind") == "worker" for e in state["events"]):
                         raise DecisionError("Director cannot claim completion before at least one worker ran")
-                    state["status"] = "done"
+                    unresolved = [a for a in state.get("assignments", {}).values()
+                                  if a.get("status") in {"failed", "interrupted"}]
+                    state["status"] = "partial" if unresolved else "done"
                     state["answer"] = decision["answer"]
+                    if unresolved:
+                        state["answer"] += "\n\nPartial: failed or interrupted assignments require review; completion is not verified."
                     save(state)
                     return state
                 else:

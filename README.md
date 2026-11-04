@@ -172,6 +172,8 @@ Mocks exercise two delegation rounds and the completion decision, but **mock wor
 
 **First-pass limitations:** The OpenCode worker is a tool-enabled agent but its available tools are determined by your OpenCode installation; no embedded browser or computer-use implementation is bundled. Paid worker use is not strictly capped here. There's no human approval UI for specific dispatched tasks, no cross-worker artifact indexing beyond file paths, no guaranteed recovery of interrupted worker subprocesses, no reliable end-to-end live integration test without credentials, and no sandbox isolation. These are follow-up engineering tasks, not features claimed complete.
 
+Worker assignments are checkpointed before dispatch and results are saved as each worker finishes. On resume, a lost dispatch is marked interrupted and its side effects and accounting must be inspected. A live coordinator PID prevents resuming the same task; PID reuse can also conservatively prevent resumption. This does not track the child process or OpenCode session while it is executing, and cannot prove an orphaned worker stopped. Failed or interrupted assignments force a partial result; there is currently no reconciliation workflow to clear that state. All follow-ups are included in director context; if authoritative context exceeds the configured limit, the task stops instead of dropping requirements. A successful worker report is not independent proof of the requested outcome or delivery. A full evidence ledger, delivery gate, and state-aware evidence reuse remain future work.
+
 ### Documentation checked during construction
 
 - OpenCode v2 CLI and agents: https://dev.opencode.ai/v2/docs/cli/commands/ and https://dev.opencode.ai/v2/docs/agents/

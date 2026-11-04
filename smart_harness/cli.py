@@ -47,6 +47,9 @@ def _print_status(state: dict) -> None:
           f" | conservatively reserved: ${state['premium_reserved_usd']:.4f}")
     detail = "complete" if state["worker_cost_complete"] else "PARTIAL (not a reliable total)"
     print(f"Worker cost from CLI events: ${state['worker_cost_reported_usd']:.4f} ({detail})")
+    for assignment_id, assignment in state.get("assignments", {}).items():
+        if assignment.get("status") in {"running", "queued", "interrupted", "failed"}:
+            print(f"  {assignment_id}: {assignment['status']} — {assignment.get('note', assignment.get('prompt', ''))}")
     if state["mode"] == "mock":
         print("MOCK MODE: zero real model calls or task execution.")
     if state.get("answer"):
@@ -101,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
             if args.prompt:
                 state["followups"].append(" ".join(args.prompt))
                 state["events"].append({"kind": "note", "message": "User provided follow-up context"})
-                state["status"] = "running"
+                if state["status"] != "workers_running":
+                    state["status"] = "running"
                 state["answer"] = None
                 save(state)
             elif state["status"] == "needs_input":

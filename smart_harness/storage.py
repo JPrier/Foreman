@@ -56,6 +56,7 @@ def new_task(objective: str, mode: str) -> dict[str, Any]:
         "worker_cost_complete": True,
         "memory": "",
         "events": [],
+        "assignments": {},
         "answer": None,
     }
     save(state)

@@ -34,7 +34,7 @@ def parse_decision(raw: str, max_tasks: int) -> dict[str, Any]:
             raise DecisionError(f"dispatch requires 1..{max_tasks} tasks")
         ids = set()
         for task in tasks:
-            if not isinstance(task, dict) or not TASK_ID.fullmatch(str(task.get("id", ""))):
+            if not isinstance(task, dict) or not isinstance(task.get("id"), str) or not TASK_ID.fullmatch(task["id"]):
                 raise DecisionError("each task needs an id with 1-48 simple characters")
             if task["id"] in ids:
                 raise DecisionError("duplicate task id in dispatch")
@@ -77,9 +77,10 @@ def director_user_message(state: dict[str, Any], max_chars: int) -> str:
     # Include recent work. If too long, drop oldest events, never truncate original objective.
     prefix = {
         "original_objective": state["objective"],
-        "user_followups": state.get("followups", [])[-3:],
+        "user_followups": state.get("followups", []),
         "director_memory": state.get("memory", ""),
         "completed_worker_ids": [e["id"] for e in events if e.get("kind") == "worker"],
+        "assignments": state.get("assignments", {}),
         "round": state["round"],
         "worker_count": state["worker_count"],
     }
@@ -97,5 +98,5 @@ def director_user_message(state: dict[str, Any], max_chars: int) -> str:
             break
     packet = json.dumps({**prefix, "recent_events": recent}, ensure_ascii=False)
     if len(packet) > max_chars:
-        raise ValueError("Original task or director memory too large; cannot safely fit director context")
+        raise ValueError("Objective, follow-ups, or director memory exceed the configured context limit; no requirements were dropped")
     return "Review progress and respond with your next JSON decision:\n" + packet
