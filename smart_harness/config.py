@@ -12,18 +12,17 @@ DEFAULTS: dict[str, Any] = {
     "director": {
         "backend": "openrouter",
         "model": "anthropic/claude-opus-5.5",
-        "opencode_model": "openai/gpt-6.1-sol#high",
-        "opencode_agent": "smart-harness-director",
-        "max_output_tokens": 1400,
-        "max_context_chars": 22000,
+        "agent": "smart-harness-director",
+        "review_stipulations": [],
         "timeout_seconds": 180,
-        "price_input_per_million": 4.0,
-        "price_output_per_million": 20.0,
-        "request_price_multiplier": 1.5,
     },
     "worker": {
         "backend": "opencode",
         "model": "openrouter/z-ai/glm-5.3-flash",
+        "medium_model": "openrouter/z-ai/glm-5.3-flash",
+        "high_model": "openrouter/z-ai/glm-5.3-flash",
+        "long_assignment_seconds": 900,
+        "expensive_assignment_usd": 0.25,
         "agent": "build",
         "read_only_agent": "plan",
         "timeout_seconds": 1800,
@@ -33,12 +32,7 @@ DEFAULTS: dict[str, Any] = {
         "auto_approve": False,
     },
     "limits": {
-        "premium_budget_usd": 0.5,
-        "max_rounds": 8,
-        "max_director_calls": 9,
-        "max_workers_per_round": 3,
-        "max_total_workers": 18,
-        "max_parallel_workers": 3,
+        "budget_usd": 50.0,
     },
 }
 
@@ -49,7 +43,10 @@ def data_dir() -> Path:
 
 
 def config_path() -> Path:
-    return data_dir() / "config.json"
+    directory = data_dir()
+    jsonc = directory / "config.jsonc"
+    legacy = directory / "config.json"
+    return jsonc if jsonc.exists() or not legacy.exists() else legacy
 
 
 def _merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -63,34 +60,78 @@ def _merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     return base
 
 
+def _strip_comments(text: str) -> str:
+    """Remove // comments outside JSON strings, preserving line numbers."""
+    result = []
+    in_string = False
+    escaped = False
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if in_string:
+            result.append(c)
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                in_string = False
+        elif c == '"':
+            in_string = True
+            result.append(c)
+        elif c == "/" and i + 1 < len(text) and text[i + 1] == "/":
+            while i < len(text) and text[i] not in "\r\n":
+                i += 1
+            continue
+        else:
+            result.append(c)
+        i += 1
+    return "".join(result)
+
+
+
 def load_config(path: Path | None = None) -> dict[str, Any]:
     config = copy.deepcopy(DEFAULTS)
     path = path or config_path()
     if path.is_file():
-        loaded = json.loads(path.read_text(encoding="utf-8"))
+        loaded = json.loads(_strip_comments(path.read_text(encoding="utf-8-sig")))
         if not isinstance(loaded, dict):
             raise ValueError("config file must be a JSON object")
+        director = loaded.get("director", {})
+        if isinstance(director, dict):
+            old_model = director.pop("opencode_model", None)
+            old_agent = director.pop("opencode_agent", None)
+            if director.get("backend") == "opencode" and old_model:
+                director["model"] = old_model.removesuffix("#high")
+            if old_agent:
+                director.setdefault("agent", old_agent)
+        for key in ("max_output_tokens", "max_context_chars", "price_input_per_million", "price_output_per_million", "request_price_multiplier", "equivalent_input_per_million", "equivalent_output_per_million", "equivalent_cache_read_per_million", "equivalent_cache_write_per_million"):
+            director.pop(key, None)
+        limits = loaded.get("limits", {})
+        if isinstance(limits, dict):
+            old_budgets = [limits[k] for k in ("premium_budget_usd", "worker_budget_usd") if isinstance(limits.get(k), (int, float)) and not isinstance(limits[k], bool) and limits[k] > 0]
+            if "budget_usd" not in limits and old_budgets:
+                limits["budget_usd"] = min(old_budgets)
+            for key in ("premium_budget_usd", "worker_budget_usd", "max_rounds", "max_director_calls", "max_workers_per_round", "max_total_workers", "max_parallel_workers", "max_attempts_per_assignment", "max_reviews_per_subject", "director_token_budget", "worker_token_budget", "token_budget"):
+                limits.pop(key, None)
         _merge(config, loaded)
     if config["mode"] not in {"mock", "live"}:
         raise ValueError("mode must be mock or live")
     if config["director"]["backend"] not in {"openrouter", "opencode"}:
         raise ValueError("director.backend must be openrouter or opencode")
+    if not isinstance(config["director"]["review_stipulations"], list) or any(not isinstance(s, str) or not s.strip() for s in config["director"]["review_stipulations"]):
+        raise ValueError("director.review_stipulations must be a list of non-empty strings")
     if config["worker"]["backend"] != "opencode":
         raise ValueError("first-pass worker.backend must be opencode")
     for k, v in config["limits"].items():
         if not isinstance(v, (int, float)) or v <= 0:
             raise ValueError(f"limits.{k} must be positive")
-    for k in ("max_rounds", "max_director_calls", "max_workers_per_round", "max_total_workers", "max_parallel_workers"):
-        if not isinstance(config["limits"][k], int):
-            raise ValueError(f"limits.{k} must be an integer")
-    if int(config["director"]["max_output_tokens"]) <= 0:
-        raise ValueError("director.max_output_tokens must be positive")
-    if int(config["director"]["max_context_chars"]) < 2000:
-        raise ValueError("director.max_context_chars must be >= 2000")
-    if config["director"]["backend"] == "openrouter":
-        for key in ("price_input_per_million", "price_output_per_million", "request_price_multiplier"):
-            if not isinstance(config["director"][key], (int, float)) or config["director"][key] <= 0:
-                raise ValueError(f"director.{key} must be positive")
+    for key in ("long_assignment_seconds", "expensive_assignment_usd"):
+        if not isinstance(config["worker"][key], (int, float)) or config["worker"][key] <= 0:
+            raise ValueError(f"worker.{key} must be positive")
+    for key in ("model", "medium_model", "high_model"):
+        if not isinstance(config["worker"][key], str) or not config["worker"][key].strip():
+            raise ValueError(f"worker.{key} must be a non-empty OpenCode model ID")
     return config
 
 

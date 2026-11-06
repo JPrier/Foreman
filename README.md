@@ -13,10 +13,10 @@ This is a **working first-pass prototype**, not production-hardened software. It
 - Cheap OpenCode workers (default: GLM 5.3 Flash via OpenRouter), with normal tool access
 - Sequential dependent rounds; optional parallel **read-only** tasks
 - Task history and resumable follow-up requests; per-worker full reports stored separately
-- Premium request preflight estimates, per-task budget, worker-cost reporting (best effort)
+- A shared USD task budget with reported and estimated cost accounting
 - Deterministic mock mode and automated tests
 
-There is **no Git or repository logic in the core**, no forced working directory, no `--repo`, and no mandatory OpenCode project setup. The worker can navigate using whatever tools its configured runtime and permissions provide. The default worker starts in your home directory so invocation location does not matter. You can optionally give it workspace location hints in configuration, but this is never required.
+Git is optional and used only for checkout fingerprinting; there is no forced working directory, no `--repo`, and no mandatory OpenCode project setup. The worker can navigate using whatever tools its configured runtime and permissions provide. The default worker starts in your home directory so invocation location does not matter. You can optionally give it workspace location hints in configuration, but this is never required.
 
 ## 1. Install on Windows
 
@@ -47,7 +47,7 @@ opencode
 
 In OpenCode, use `/connect` to connect **OpenRouter**. Make sure `openrouter/z-ai/glm-5.3-flash` resolves with `/models`. Exact model slugs and permissions can change; check OpenCode and provider documentation before live use.
 
-Your user config is `%USERPROFILE%\.smart-harness\config.json` (Linux: `~/.smart-harness/config.json`). `smart-coder init` creates it. Set `"mode": "live"` only after authentication.
+Your user config is `%USERPROFILE%\.smart-harness\config.jsonc` (Linux: `~/.smart-harness/config.jsonc`). `smart-coder init` creates it. Set `"mode": "live"` only after authentication.
 
 ### Director option A — Opus through OpenRouter (metered)
 
@@ -81,8 +81,8 @@ Change this existing config key:
 ```json
 "director": {
   "backend": "opencode",
-  "opencode_model": "openai/gpt-6.1-sol#high",
-  "opencode_agent": "smart-harness-director"
+  "model": "openai/gpt-6.1-sol",
+  "agent": "smart-harness-director"
 }
 ```
 
@@ -105,7 +105,7 @@ smart-coder continue "Use the second approach and explain why"
 
 A path, URL, or project is only relevant *if your task involves one*. The harness itself does not try to discover Git repositories or force you into one. Workers can only access things their OpenCode tools and credentials can access; this starter does not automatically connect GitHub or web services.
 
-**Warning:** `smart-coder "task"` always begins a fresh task. `smart-coder continue "..."` resumes the latest task. Use `continue --task task_...` for an older one. A `needs_input` task requires a follow-up before resumption. Tasks that completed cannot be resumed.
+**Warning:** `smart-coder "task"` always begins a fresh task. `smart-coder continue "..."` resumes the latest task. Use `continue --task task_...` for an older one. A `needs_input` task requires a follow-up before resumption. A completed task can be reopened with a follow-up; earlier unscoped evidence may become stale.
 
 ## 4. How it works
 
@@ -132,21 +132,7 @@ The worker returns evidence in its final report. The harness stores that report 
 
 ## 5. Budgets and safety
 
-Defaults in `config.json`:
-
-| Limit | Default |
-| --- | ---: |
-| Premium director target budget (OpenRouter) | $0.50 per task |
-| Premium output token cap | 1,400 per decision |
-| Maximum director calls | 9 |
-| Maximum dispatch rounds | 8 |
-| Maximum workers / round | 3 |
-| Maximum total workers | 18 |
-| Parallel workers (read-only only) | 3 |
-
-OpenRouter premium preflight reserves a *conservative estimate* before each call. When the provider returns an exact cost, it is recorded; if cost is missing, the reserve remains. This is **not a guaranteed hard spending cap**: tokens, caching, provider pricing, retries, or a request interrupted after billing may differ. Use OpenRouter's account-side credit/API-key caps too. The quoted $4/$20 per million input/output token rates for Opus 5.5 are only a starting default; **update config if pricing changes**. The premium budget governs the OpenRouter director only and **does not cap cheap-model API spending** through OpenCode.
-
-OpenCode `--format json` can omit final billing events, so worker cost numbers may be partial. `status` explicitly labels incomplete accounting. ChatGPT subscription usage has no USD measurement here. If the director or budget fails, the task stops and preserves state; an unfinished tool-enabled worker may already have made changes. **The harness cannot roll back side effects.**
+`limits.budget_usd` sets a shared per-task budget (default $50). Foreman uses reported provider costs when available; otherwise it estimates the OpenRouter-equivalent cost from current model prices and token usage, excluding cache hits. Subscription estimates are not actual charges or subscription quota. The budget is checked between calls, so running calls and parallel batches can exceed it. Missing pricing or usage stops the task with incomplete accounting. Tasks created before this budget accounting cannot safely resume without reconciling historical costs.
 
 OpenCode workers normally run with configured permissions; `worker.auto_approve` defaults to false. Changing it to true permits unattended tool approvals for actions OpenCode doesn't explicitly deny. Only enable it if you trust the worker and its environment. Read-only agents are directed to OpenCode's `plan` agent, but you should still review the effective permission configuration. Separate workers have separate sessions and may not share conversational context; use the director's explicit prompts for handoffs.
 
@@ -171,6 +157,8 @@ Mocks exercise two delegation rounds and the completion decision, but **mock wor
 - `smart_harness/storage.py`: durable task history and full worker output
 
 **First-pass limitations:** The OpenCode worker is a tool-enabled agent but its available tools are determined by your OpenCode installation; no embedded browser or computer-use implementation is bundled. Paid worker use is not strictly capped here. There's no human approval UI for specific dispatched tasks, no cross-worker artifact indexing beyond file paths, no guaranteed recovery of interrupted worker subprocesses, no reliable end-to-end live integration test without credentials, and no sandbox isolation. These are follow-up engineering tasks, not features claimed complete.
+
+For the ledger, report retrieval, recovery limits, model routing and budget behavior, see [reliability.md](docs/reliability.md). For a repeatable direct-orchestration comparison, see [evaluation.md](docs/evaluation.md). These mechanisms do not independently verify model claims or guarantee a hard cost cap.
 
 ### Documentation checked during construction
 
