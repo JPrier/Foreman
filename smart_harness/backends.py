@@ -32,7 +32,7 @@ class WorkerResult:
     usage: dict[str, Any] = field(default_factory=dict)
 
 
-def run_opencode(prompt: str, *, model: str, agent: str, cwd: Path, timeout: int, auto_approve: bool, lifecycle: Any = None) -> tuple[str, float | None, bool, str | None, int, str]:
+def run_opencode(prompt: str, *, model: str, agent: str, cwd: Path, timeout: int | None, auto_approve: bool, lifecycle: Any = None) -> tuple[str, float | None, bool, str | None, int, str]:
     """Invoke OpenCode; extract assistant text and best-effort step costs from JSONL.
 
     The CLI has historically omitted final billing events in some versions. We
@@ -169,7 +169,7 @@ class OpenRouterDirector:
             },
         )
         try:
-            with urllib.request.urlopen(req, timeout=int(cfg["timeout_seconds"])) as response:
+            with urllib.request.urlopen(req, timeout=None) as response:
                 obj = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")[-1000:]
@@ -214,7 +214,7 @@ class OpenCodeDirector:
                     usage.setdefault("token_events", []).append(tokens)
         text, _cost, _complete, _session, code, stderr = run_opencode(
             prompt, model=model, agent=cfg["agent"], cwd=self.cwd,
-            timeout=int(cfg["timeout_seconds"]), auto_approve=False, lifecycle=observe,
+            timeout=None, auto_approve=False, lifecycle=observe,
         )
         if code != 0 or not text:
             raise RuntimeError(f"OpenCode director error (exit={code}): {stderr or 'no final text'}")
@@ -269,7 +269,7 @@ Never falsely claim actions or verification you did not do. This report goes bac
                 lifecycle({k: v for k, v in update.items() if v is not None})
         text, cost, complete, session_id, code, stderr = run_opencode(
             full_prompt, model=model or cfg["model"], agent=agent,
-            cwd=directory, timeout=int(cfg["timeout_seconds"]),
+            cwd=directory, timeout=None,
             auto_approve=bool(cfg["auto_approve"]),
             lifecycle=observe,
         )
