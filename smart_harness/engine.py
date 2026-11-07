@@ -335,8 +335,23 @@ class Engine:
             try:
                 self._check_budget(state)
                 decision = self._premium_decision(state)
+                try:
+                    apply_updates(state, decision.get("ledger_updates"))
+                except DecisionError as exc:
+                    # Ledger updates are atomic and precede all decision actions.
+                    # Give the director a chance to correct its evidence without
+                    # dispatching work or consuming the retrieved reports.
+                    state["status"] = "running"
+                    state["answer"] = None
+                    state["events"].append({
+                        "kind": "note", "at": utcnow(),
+                        "message": f"Director decision rejected: ledger validation failed: {exc}. "
+                                   "No action was executed. Use exact evidence from recorded worker reports or retrieve "
+                                   "the full report; never invent missing paths or hashes.",
+                    })
+                    save(state)
+                    continue
                 state.pop("requested_reports", None)
-                apply_updates(state, decision.get("ledger_updates"))
                 resolutions = decision.get("resolved_assignments", {})
                 if not isinstance(resolutions, dict):
                     raise DecisionError("resolved_assignments must map assignment IDs to reviewer IDs")
