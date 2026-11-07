@@ -343,9 +343,11 @@ class Engine:
                 for ident, reviewer in resolutions.items():
                     assignment = state.get("assignments", {}).get(ident)
                     review = workers.get(reviewer) if isinstance(reviewer, str) else None
-                    if not assignment or assignment.get("status") not in {"failed", "interrupted", "blocked"} or not review or not review.get("ok") or reviewer == ident:
+                    if not assignment or assignment.get("status") not in {"failed", "interrupted", "blocked", "completed", "reconciled"} or not review or not review.get("ok") or reviewer == ident:
                         raise DecisionError("assignment resolution requires a separate successful review worker")
-                    assignment.update({"status": "reconciled", "review_worker": reviewer})
+                    # Completed work may also be reviewed; repeated resolution must
+                    # not stop a resumed task or replay its completed mutations.
+                    assignment.update({"status": "completed" if assignment["status"] == "completed" else "reconciled", "review_worker": reviewer})
                 if decision.get("retrieve_reports"):
                     from pathlib import Path
                     reports = {}

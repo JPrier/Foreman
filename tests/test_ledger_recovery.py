@@ -31,6 +31,33 @@ class Worker:
 
 
 class LedgerRecoveryTests(unittest.TestCase):
+    def test_completed_and_reconciled_assignment_reviews_are_repeatable(self):
+        for status in ("completed", "reconciled"):
+            with self.subTest(status=status):
+                state = new_task("task", "mock")
+                state["assignments"] = {"work": {"status": status}}
+                state["events"].append({"kind": "worker", "id": "review", "ok": True})
+                director = Director([
+                    {"action": "ask_user", "question": "next", "resolved_assignments": {"work": "review"}},
+                    {"action": "ask_user", "question": "next", "resolved_assignments": {"work": "review"}},
+                ])
+                engine = Engine(self.cfg, director=director, worker=Worker(), log=lambda _: None)
+                for _ in range(2):
+                    out = engine.run(state)
+                    self.assertEqual(out["status"], "needs_input")
+                    self.assertEqual(out["assignments"]["work"], {"status": status, "review_worker": "review"})
+
+    def test_assignment_review_still_requires_separate_successful_worker(self):
+        for reviewer, ok in (("work", True), ("review", False), ("missing", True)):
+            with self.subTest(reviewer=reviewer, ok=ok):
+                state = new_task("task", "mock")
+                state["assignments"] = {"work": {"status": "completed"}}
+                state["events"].append({"kind": "worker", "id": "work" if reviewer == "work" else "review", "ok": ok})
+                director = Director([{"action": "ask_user", "question": "next", "resolved_assignments": {"work": reviewer}}])
+                out = Engine(self.cfg, director=director, worker=Worker(), log=lambda _: None).run(state)
+                self.assertEqual(out["status"], "error")
+                self.assertEqual(out["assignments"]["work"], {"status": "completed"})
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.env = patch.dict(os.environ, {"SMART_HARNESS_HOME": self.tmp.name})
@@ -237,3 +264,4 @@ class LedgerRecoveryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
