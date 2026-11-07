@@ -4,8 +4,17 @@ from unittest.mock import patch
 from smart_harness.backends import OpenCodeWorker
 from smart_harness.config import DEFAULTS, load_config
 from smart_harness.engine import Engine
+from smart_harness.contracts import parse_decision, DecisionError
 
 class IntegrationRegressionTests(unittest.TestCase):
+    def test_retrieval_only_dispatch_defers_worker_validation(self):
+        decision = {'action': 'dispatch', 'tasks': [], 'retrieve_reports': ['discover_design_repo']}
+        self.assertEqual(parse_decision(json.dumps(decision)), decision)
+        with self.assertRaises(DecisionError):
+            parse_decision(json.dumps({'action': 'dispatch', 'tasks': []}))
+        with self.assertRaises(DecisionError):
+            parse_decision(json.dumps({'action': 'dispatch', 'retrieve_reports': ['bad/id']}))
+
     def test_jsonc_configuration_and_legacy_director(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / 'config.jsonc'

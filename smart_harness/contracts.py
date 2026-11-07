@@ -47,9 +47,12 @@ def parse_decision(raw: str, max_tasks: int | None = None) -> dict[str, Any]:
             raise DecisionError("duplicate report requests must be made in separate decisions")
         request_ids.add(ident)
     if action == "dispatch":
+        if requests:
+            # Retrieval defers the action; no workers will be dispatched yet.
+            return value
         tasks = value.get("tasks")
         if not isinstance(tasks, list) or not tasks or (max_tasks is not None and len(tasks) > max_tasks):
-            raise DecisionError(f"dispatch requires 1..{max_tasks} tasks")
+            raise DecisionError("dispatch requires at least one task" if max_tasks is None else f"dispatch requires 1..{max_tasks} tasks")
         ids = set()
         for task in tasks:
             if not isinstance(task, dict) or not isinstance(task.get("id"), str) or not TASK_ID.fullmatch(task["id"]):
