@@ -102,3 +102,47 @@ def reconcile(state: dict[str, Any]) -> str:
                        "Interrupted assignments require inspection before retrying; side effects and accounting are unknown.")
     save(state)
     return "worker_running" if active else "interrupted"
+
+
+def recover_worker_accounting(state: dict[str, Any], ident: str, exported: dict[str, Any], session_id: str):
+    """Replace one worker ledger entry from a verified export; caller holds task lock.
+
+    Recovery changes accounting and the report only. Failed mutations still need
+    independent inspection by the director before any retry.
+    """
+    from .backends import exported_session_result
+    from .storage import save_worker_output
+    coordinator = state.get("coordinator_pid")
+    if coordinator and process_matches(coordinator, state.get("coordinator_identity")):
+        raise ValueError("Coordinator may still be active")
+    result = exported_session_result(exported, session_id)
+    assignment = state["assignments"][ident]
+    if assignment.get("session_id") not in {None, session_id}:
+        raise ValueError("Assignment session mismatch")
+    if assignment.get("pid") and not assignment.get("process_exited") and process_matches(assignment["pid"], assignment.get("process_identity")):
+        raise ValueError("Worker may still be active")
+    events = [e for e in state["events"] if e.get("kind") == "worker" and e.get("id") == ident]
+    if len(events) != 1 or any(e.get("session_id") == session_id and e.get("id") != ident for e in state["events"]):
+        raise ValueError("Ambiguous or already attributed worker session")
+    event = events[0]
+    if event.get("session_id") not in {None, session_id}:
+        raise ValueError("Worker event session mismatch")
+    path = save_worker_output(state, ident, result.full_output)
+    event.update(session_id=session_id, reported_cost_usd=result.cost_usd, cost_complete=True,
+                 budget_cost_usd=result.cost_usd, budget_cost_source="reported", estimated_cost_usd=None,
+                 usage=result.usage, summary=result.summary, report_chars=len(result.full_output), output_path=path)
+    assignment.update(session_id=session_id, output_path=path, accounting_recovered=True)
+    # Rebuild totals from authoritative entries so repeated recovery is idempotent.
+    charges = [e for e in state["events"] if e.get("kind") in {"worker", "director"}]
+    state["budget_reported_usd"] = sum(e.get("budget_cost_usd") or 0 for e in charges if e.get("budget_cost_source") == "reported")
+    state["budget_estimated_usd"] = sum(e.get("budget_cost_usd") or 0 for e in charges if e.get("budget_cost_source") == "estimated")
+    state["budget_cost_complete"] = (all(e.get("budget_cost_usd") is not None for e in charges)
+        and len(charges) == state.get("director_calls", sum(e["kind"] == "director" for e in charges))
+        + state.get("worker_count", sum(e["kind"] == "worker" for e in charges)))
+    workers = [e for e in charges if e["kind"] == "worker"]
+    state["worker_cost_reported_usd"] = round(sum(e.get("reported_cost_usd") or 0 for e in workers), 6)
+    state["worker_cost_complete"] = all(e.get("cost_complete", False) for e in workers)
+    state["events"].append({"kind": "note", "at": utcnow(), "message":
+        f"Recovered {ident} accounting from completed OpenCode session {session_id}; replaced prior charge, did not add partial costs. Inspect recovered report and side effects before retrying."})
+    save(state)
+    return result

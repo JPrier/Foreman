@@ -189,7 +189,8 @@ class Engine:
                 result = self.worker.call(prompt, read_only)
         except Exception as exc:
             message = f"WORKER ERROR: {type(exc).__name__}: {exc}. Worker may have performed partial side effects."
-            result = WorkerResult(message, message, False, None, False)
+            result = WorkerResult(message, message, False, None, False,
+                                  state.get("assignments", {}).get(task["id"], {}).get("session_id"))
         return task, result
 
     def _dispatch(self, state: dict[str, Any], decision: dict[str, Any]) -> None:

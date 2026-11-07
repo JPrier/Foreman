@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -30,6 +31,37 @@ class WorkerResult:
     cost_complete: bool
     session_id: str | None = None
     usage: dict[str, Any] = field(default_factory=dict)
+
+
+def exported_session_result(session: dict[str, Any], session_id: str) -> WorkerResult:
+    """Recover a complete session ledger, never add it to partial stream costs."""
+    if session.get("info", {}).get("id") != session_id:
+        raise ValueError("Exported session identity mismatch")
+    messages = [m for m in session["messages"] if m["info"]["role"] == "assistant"]
+    seen = set()
+    cost = 0.0
+    for message in messages:
+        info = message["info"]
+        if info["id"] in seen:
+            raise ValueError("Duplicate assistant message")
+        seen.add(info["id"])
+        steps = [p for p in message["parts"] if p.get("type") == "step-finish"]
+        amount = info.get("cost")
+        if (not info.get("time", {}).get("completed") or info.get("error") or
+                not steps or not isinstance(amount, (int, float)) or isinstance(amount, bool) or
+                not math.isfinite(amount) or amount < 0 or
+                any(not isinstance(p.get("cost"), (int, float)) or isinstance(p.get("cost"), bool)
+                    or not math.isfinite(p["cost"]) or p["cost"] < 0 for p in steps) or
+                abs(sum(p["cost"] for p in steps) - amount) > 1e-9 or
+                any(p.get("type") == "tool" and p.get("state", {}).get("status") not in {"completed", "error"}
+                    for p in message["parts"])):
+            raise ValueError("Exported session has incomplete usage or pending tools")
+        cost += amount
+    if not messages or messages[-1]["info"].get("finish") != "stop":
+        raise ValueError("Exported session has no terminal stop")
+    text = "\n".join(p["text"] for p in messages[-1]["parts"] if p.get("type") == "text")
+    return WorkerResult(text, text, bool(text), cost, True, session_id,
+                        {"terminal": True, "accounting_source": "opencode_export"})
 
 
 def run_opencode(prompt: str, *, model: str, agent: str, cwd: Path, timeout: int | None, auto_approve: bool, lifecycle: Any = None) -> tuple[str, float | None, bool, str | None, int, str]:
@@ -89,8 +121,7 @@ def run_opencode(prompt: str, *, model: str, agent: str, cwd: Path, timeout: int
                     reader.join(timeout=5)
                     if not reader.is_alive() and proc.stdout:
                         proc.stdout.close()
-                    lifecycle({"process_exited": True})
-                    raise
+                    code = 124
                 reader.join(timeout=5)
                 if not reader.is_alive() and proc.stdout:
                     proc.stdout.close()
@@ -99,7 +130,8 @@ def run_opencode(prompt: str, *, model: str, agent: str, cwd: Path, timeout: int
                     raise RuntimeError("OpenCode event stream incomplete: " + (stream_errors[0] if stream_errors else "stdout remained open"))
                 stderr_file.seek(0)
                 from types import SimpleNamespace
-                finished = SimpleNamespace(stdout="".join(lines), stderr=stderr_file.read(), returncode=code)
+                finished = SimpleNamespace(stdout="".join(lines), stderr=stderr_file.read() +
+                    (f"\nOpenCode timed out after {timeout}s; side effects may have occurred" if code == 124 else ""), returncode=code)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"OpenCode timed out after {timeout}s; side effects may have occurred") from exc
     chunks_by_message: dict[str, list[str]] = {}
