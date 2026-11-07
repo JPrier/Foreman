@@ -7,6 +7,15 @@ from smart_harness.engine import Engine
 from smart_harness.contracts import parse_decision, DecisionError
 
 class IntegrationRegressionTests(unittest.TestCase):
+    def test_new_allowance_preserves_lifetime_spending(self):
+        cfg = copy.deepcopy(DEFAULTS)
+        cfg['limits']['budget_usd'] = 10.0
+        engine = Engine(cfg, log=lambda _: None)
+        state = {'mode': 'live', 'budget_cost_complete': True, 'budget_reported_usd': 12.0,
+                 'budget_estimated_usd': 3.0, 'budget_start_usd': 10.0}
+        engine._check_budget(state)
+        self.assertEqual(state['budget_reported_usd'], 12.0)
+
     def test_retrieval_only_dispatch_defers_worker_validation(self):
         decision = {'action': 'dispatch', 'tasks': [], 'retrieve_reports': ['discover_design_repo']}
         self.assertEqual(parse_decision(json.dumps(decision)), decision)
