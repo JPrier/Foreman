@@ -113,7 +113,7 @@ class Engine:
             return
         if not state["budget_cost_complete"]:
             raise BudgetError("Cost accounting incomplete; cannot safely enforce the budget")
-        if state["budget_reported_usd"] + state["budget_estimated_usd"] >= self.cfg["limits"]["budget_usd"]:
+        if state["budget_reported_usd"] + state["budget_estimated_usd"] - state.get("budget_start_usd", 0.0) >= self.cfg["limits"]["budget_usd"]:
             raise BudgetError("USD budget reached; task remains unfinished")
 
     def _cost(self, reported, usage, model, mode):
@@ -159,7 +159,7 @@ class Engine:
             state["budget_cost_complete"] = False
         elif source in ("reported", "estimated"):
             state[f"budget_{source}_usd"] += amount
-        self.log(f"Budget: reported ${state['budget_reported_usd']:.4f} + estimated ${state['budget_estimated_usd']:.4f} / ${self.cfg['limits']['budget_usd']:.2f}")
+        self.log(f"Allowance used: ${state['budget_reported_usd'] + state['budget_estimated_usd'] - state.get('budget_start_usd', 0.0):.4f}; lifetime reported ${state['budget_reported_usd']:.4f} + estimated ${state['budget_estimated_usd']:.4f} / ${self.cfg['limits']['budget_usd']:.2f}")
 
     def _one_worker(self, task: dict[str, Any], state: dict[str, Any]) -> tuple[dict[str, Any], WorkerResult]:
         prompt = task["prompt"]
@@ -287,7 +287,7 @@ class Engine:
                         record(task, result, started)
         else:
             for task in tasks:
-                if not state["budget_cost_complete"] or state["budget_reported_usd"] + state["budget_estimated_usd"] >= float(limits["budget_usd"]):
+                if not state["budget_cost_complete"] or state["budget_reported_usd"] + state["budget_estimated_usd"] - state.get("budget_start_usd", 0.0) >= float(limits["budget_usd"]):
                     for pending in tasks:
                         if assignments[pending["id"]]["status"] == "queued":
                             assignments[pending["id"]].update({"status": "blocked", "note": "Worker budget reached before this assignment started."})
