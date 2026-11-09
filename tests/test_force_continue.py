@@ -36,6 +36,7 @@ class ForceContinueTests(unittest.TestCase):
                 self.assertEqual(main([*command, '--task', self.state['id']]), 1)
                 s = load(self.state['id'])
                 self.assertEqual(s['budget_start_usd'], 30.0)
+                self.assertEqual(s['status'], 'running')
                 self.assertEqual(s['budget_reported_usd'], 25.0)
                 self.assertEqual(s['budget_estimated_usd'], 5.0)
                 self.assertEqual(s['events'][-1]['budget_usd'], 20.0)

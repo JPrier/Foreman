@@ -163,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
                         "budget_start_usd": baseline, "budget_usd": cfg["limits"]["budget_usd"],
                     })
                     state["budget_start_usd"] = baseline
+                    state["status"] = "running"
                     state["answer"] = None
                     save(state)
                 if args.prompt:
