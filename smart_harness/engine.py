@@ -68,6 +68,11 @@ class Engine:
     def _premium_decision(self, state: dict[str, Any]) -> dict[str, Any]:
         limits = self.cfg["limits"]
         system = director_system()
+        used = state.get("budget_reported_usd", 0.0) + state.get("budget_estimated_usd", 0.0) - state.get("budget_start_usd", 0.0)
+        system += (f"\nCurrent authorized USD allowance: ${limits['budget_usd']:.4f}; "
+                   f"accounted usage in this allowance: ${used:.4f}. "
+                   "These current accounting values supersede historical budget-stop notes and older allowances in memory. "
+                   "The engine enforces this allowance; continue authorized work while it remains available.")
         stipulations = self.cfg["director"].get("review_stipulations", [])
         if stipulations:
             system += "\nUser-configured review stipulations:\n" + "\n".join(f"- {item}" for item in stipulations)

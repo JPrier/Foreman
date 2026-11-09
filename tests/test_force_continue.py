@@ -7,6 +7,7 @@ from unittest.mock import patch
 from smart_harness.cli import main
 from smart_harness.config import DEFAULTS
 from smart_harness.engine import BudgetError, Engine
+from smart_harness.backends import DirectorResult
 from smart_harness.storage import execution_lock, load, new_task, save
 
 
@@ -54,6 +55,18 @@ class ForceContinueTests(unittest.TestCase):
             main(['continue'])
         self.assertEqual(load()['budget_start_usd'], 10.0)
         self.assertEqual(load()['events'], [])
+
+    def test_director_receives_current_allowance_despite_stale_stop_notes(self):
+        from unittest.mock import Mock
+        director = Mock()
+        director.call.return_value = DirectorResult('{"action":"ask_user","question":"Which option?"}', 0.0, {})
+        self.state['budget_start_usd'] = 30.0
+        self.state['events'].append({'kind': 'note', 'message': 'Old $10 budget exhausted'})
+        Engine(self.cfg, director=director, log=lambda _: None)._premium_decision(self.state)
+        system = director.call.call_args.args[0]
+        self.assertIn('authorized USD allowance: $20.0000', system)
+        self.assertIn('usage in this allowance: $0.0000', system)
+        self.assertIn('supersede historical budget-stop notes', system)
 
     def test_incomplete_or_invalid_accounting_cannot_refresh(self):
         for changes in ({'budget_cost_complete': False}, {'budget_reported_usd': float('nan')},
