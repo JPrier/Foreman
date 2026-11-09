@@ -111,6 +111,8 @@ A path, URL, or project is only relevant *if your task involves one*. The harnes
 
 `force-continue` (or `continue --force`) explicitly grants a fresh `limits.budget_usd` allowance from your current configuration. It preserves lifetime reported and estimated costs, records a budget-refresh event, and resumes the same task. Ordinary `continue` preserves the current allowance. Refreshing does not bypass task locks, active-worker recovery, incomplete cost accounting, or required user answers. Each explicit refresh grants another allowance; it is never applied automatically.
 
+Foreman scripts own spending enforcement, allowance refreshes, accounting, and operational warnings. These controls remain in local state, logs, and operator status; they are not included in director or worker task instructions. Director context includes task evidence without provider cost/usage fields or operational budget-stop notes. User requirements about a project's own costs or budgets remain task content.
+
 ## 4. How it works
 
 ```text

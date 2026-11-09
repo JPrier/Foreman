@@ -56,17 +56,33 @@ class ForceContinueTests(unittest.TestCase):
         self.assertEqual(load()['budget_start_usd'], 10.0)
         self.assertEqual(load()['events'], [])
 
-    def test_director_receives_current_allowance_despite_stale_stop_notes(self):
+    def test_director_prompt_excludes_operator_budget_and_preserves_task_budget_requirements(self):
         from unittest.mock import Mock
         director = Mock()
         director.call.return_value = DirectorResult('{"action":"ask_user","question":"Which option?"}', 0.0, {})
         self.state['budget_start_usd'] = 30.0
-        self.state['events'].append({'kind': 'note', 'message': 'Old $10 budget exhausted'})
+        self.state['objective'] = 'Build a budget tracker with a $10 spending alert'
+        self.state['events'].extend([
+            {'kind': 'note', 'message': 'USD budget reached; task remains unfinished'},
+            {'kind': 'note', 'audience': 'operator', 'message': 'Old $10 allowance exhausted'},
+            {'kind': 'note', 'message': 'The project budget tracker needs validation'},
+            {'kind': 'worker', 'id': 'review', 'ok': True, 'summary': 'Validated alert',
+             'budget_cost_usd': 1.25, 'reported_cost_usd': 1.25, 'usage': {'tokens': 42}},
+        ])
         Engine(self.cfg, director=director, log=lambda _: None)._premium_decision(self.state)
         system = director.call.call_args.args[0]
-        self.assertIn('authorized USD allowance: $20.0000', system)
-        self.assertIn('usage in this allowance: $0.0000', system)
-        self.assertIn('supersede historical budget-stop notes', system)
+        prompt = director.call.call_args.args[1]
+        self.assertNotIn('allowance', system + prompt)
+        self.assertNotIn('USD budget reached', prompt)
+        self.assertNotIn('budget_start_usd', prompt)
+        self.assertNotIn('budget_cost_usd', prompt)
+        self.assertNotIn('reported_cost_usd', prompt)
+        self.assertNotIn('"usage"', prompt)
+        self.assertIn('Build a budget tracker with a $10 spending alert', prompt)
+        self.assertIn('The project budget tracker needs validation', prompt)
+        self.assertIn('Validated alert', prompt)
+        self.assertEqual(load()['budget_start_usd'], 30.0)
+        self.assertEqual(load()['events'][0]['message'], 'USD budget reached; task remains unfinished')
 
     def test_incomplete_or_invalid_accounting_cannot_refresh(self):
         for changes in ({'budget_cost_complete': False}, {'budget_reported_usd': float('nan')},

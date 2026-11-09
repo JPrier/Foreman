@@ -66,13 +66,7 @@ class Engine:
         self.worker = worker if worker is not None else (MockWorker() if mode == "mock" else OpenCodeWorker(cfg["worker"]))
 
     def _premium_decision(self, state: dict[str, Any]) -> dict[str, Any]:
-        limits = self.cfg["limits"]
         system = director_system()
-        used = state.get("budget_reported_usd", 0.0) + state.get("budget_estimated_usd", 0.0) - state.get("budget_start_usd", 0.0)
-        system += (f"\nCurrent authorized USD allowance: ${limits['budget_usd']:.4f}; "
-                   f"accounted usage in this allowance: ${used:.4f}. "
-                   "These current accounting values supersede historical budget-stop notes and older allowances in memory. "
-                   "The engine enforces this allowance; continue authorized work while it remains available.")
         stipulations = self.cfg["director"].get("review_stipulations", [])
         if stipulations:
             system += "\nUser-configured review stipulations:\n" + "\n".join(f"- {item}" for item in stipulations)
@@ -271,7 +265,7 @@ class Engine:
             state["worker_cost_complete"] = state["worker_cost_complete"] and result.cost_complete and result.cost_usd is not None
             if (time.monotonic() - started >= float(self.cfg["worker"]["long_assignment_seconds"]) or
                     (result.cost_usd is not None and result.cost_usd >= float(self.cfg["worker"]["expensive_assignment_usd"]))):
-                state["events"].append({"kind": "note", "at": utcnow(), "message": f"Assignment {task['id']} exceeded a duration or reported-cost warning threshold."})
+                state["events"].append({"kind": "note", "audience": "operator", "at": utcnow(), "message": f"Assignment {task['id']} exceeded a duration or reported-cost warning threshold."})
             self.log(f"  {task['id']}: {'ok' if result.succeeded else 'failed'}; report: {path}")
             save(state)
         if parallel:
@@ -425,7 +419,8 @@ class Engine:
             except (BudgetError, DecisionError) as exc:
                 state["status"] = "budget_exhausted" if isinstance(exc, BudgetError) else "error"
                 state["answer"] = str(exc)
-                state["events"].append({"kind": "note", "at": utcnow(), "message": str(exc)})
+                state["events"].append({"kind": "note", "at": utcnow(), "message": str(exc),
+                                        **({"audience": "operator"} if isinstance(exc, BudgetError) else {})})
                 save(state)
                 return state
             except Exception as exc:
