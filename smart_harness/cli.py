@@ -3,15 +3,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import initialize_config, load_config
 from .engine import Engine
-from .storage import load, new_task, recent_tasks, save, execution_lock
+from .storage import load, new_task, recent_tasks, save, execution_lock, utcnow
 
-COMMANDS = {"run", "continue", "status", "history", "show", "init", "install-director-agent", "fingerprint"}
+COMMANDS = {"run", "continue", "force-continue", "status", "history", "show", "init", "install-director-agent", "fingerprint"}
 
 
 def make_parser() -> argparse.ArgumentParser:
@@ -27,9 +28,10 @@ def make_parser() -> argparse.ArgumentParser:
     fingerprint.add_argument("path", type=Path)
     run = sub.add_parser("run", help="Start a task from any directory")
     run.add_argument("prompt", nargs="+", help="Natural-language task")
-    cont = sub.add_parser("continue", help="Continue the last or named task with optional follow-up")
+    cont = sub.add_parser("continue", aliases=["force-continue"], help="Continue a task; force-continue grants a fresh configured USD allowance")
     cont.add_argument("prompt", nargs="*", help="Optional follow-up or answer to a clarifying question")
     cont.add_argument("--task", help="Task ID (default: latest)")
+    cont.add_argument("--force", action="store_true", help="Refresh the USD allowance while preserving lifetime spending and recovery checks")
     status = sub.add_parser("status", help="Show latest task status from any directory")
     status.add_argument("--task")
     sub.add_parser("history", help="List recent tasks")
@@ -47,6 +49,8 @@ def _shorthand(args: list[str]) -> list[str]:
 def _print_status(state: dict) -> None:
     if 'budget_cost_complete' in state:
         print(f"Budget costs: reported ${state.get('budget_reported_usd', 0):.4f} | estimated ${state.get('budget_estimated_usd', 0):.4f}" + ("" if state['budget_cost_complete'] else " | incomplete"))
+        used = state.get('budget_reported_usd', 0) + state.get('budget_estimated_usd', 0) - state.get('budget_start_usd', 0)
+        print(f"Current allowance used: ${used:.4f}")
     print(f"Task: {state['id']} | status: {state['status']} | rounds: {state['round']} | workers: {state['worker_count']}")
     director_events = [e for e in state.get("events", []) if e.get("kind") == "director"]
     unknown_cost = sum(e.get("cost_usd") is None for e in director_events)
@@ -65,7 +69,7 @@ def _print_status(state: dict) -> None:
             if assignment.get("status") == "running" and assignment.get("started_at"):
                 seconds = max(0, (datetime.now(timezone.utc) - datetime.fromisoformat(assignment["started_at"])).total_seconds())
                 elapsed = f" | {seconds:.0f}s elapsed" + (" | LONG-RUNNING" if seconds >= assignment.get("long_assignment_seconds", 900) else "")
-            print(f"  {assignment_id}: {assignment['status']}{elapsed} — {assignment.get('note', assignment.get('prompt', ''))}")
+            print(f"  {assignment_id}: {assignment['status']}{elapsed} â€” {assignment.get('note', assignment.get('prompt', ''))}")
     notes = [e.get("message") for e in state.get("events", []) if e.get("kind") == "note" and e.get("message")]
     if notes:
         print(f"Recent activity: {notes[-1]}")
@@ -139,6 +143,28 @@ def main(argv: list[str] | None = None) -> int:
                     raise ValueError("Task mode differs from configuration; use --mock or --live to match its original mode")
                 if state["status"] == "done" and not args.prompt:
                     raise ValueError("Task is complete; provide a follow-up to continue it")
+                if state["status"] == "needs_input" and not args.prompt:
+                    raise ValueError("Task is awaiting user input; provide text after 'continue'")
+                if args.command == "force-continue" or args.force:
+                    from .recovery import reconcile
+                    recovery = reconcile(state)
+                    if recovery in {"coordinator_running", "worker_running"}:
+                        raise RuntimeError("Task processes may still be active; cannot refresh the budget")
+                    totals = [state.get("budget_reported_usd"), state.get("budget_estimated_usd")]
+                    if not state.get("budget_cost_complete") or any(
+                        isinstance(value, bool) or not isinstance(value, (int, float))
+                        or not math.isfinite(value) or value < 0 for value in totals
+                    ):
+                        raise ValueError("Cost accounting incomplete or invalid; recover accounting before refreshing the budget")
+                    baseline = sum(totals)
+                    state["events"].append({
+                        "kind": "budget_refresh", "at": utcnow(),
+                        "previous_budget_start_usd": state.get("budget_start_usd", 0.0),
+                        "budget_start_usd": baseline, "budget_usd": cfg["limits"]["budget_usd"],
+                    })
+                    state["budget_start_usd"] = baseline
+                    state["answer"] = None
+                    save(state)
                 if args.prompt:
                     state["followups"].append(" ".join(args.prompt))
                     state["events"].append({"kind": "followup", "message": " ".join(args.prompt)})
@@ -146,8 +172,6 @@ def main(argv: list[str] | None = None) -> int:
                         state["status"] = "running"
                     state["answer"] = None
                     save(state)
-                elif state["status"] == "needs_input":
-                    raise ValueError("Task is awaiting user input; provide text after 'continue'")
                 outcome = Engine(cfg).run(state, already_locked=True)
         _print_status(outcome)
         return 0 if outcome["status"] in {"done", "needs_input"} else 1

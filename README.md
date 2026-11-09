@@ -101,11 +101,15 @@ smart-coder status
 smart-coder history
 smart-coder show
 smart-coder continue "Use the second approach and explain why"
+smart-coder force-continue --task task_...  # Fresh configured USD allowance
+smart-coder continue --force               # Same, for the latest task
 ```
 
 A path, URL, or project is only relevant *if your task involves one*. The harness itself does not try to discover Git repositories or force you into one. Workers can only access things their OpenCode tools and credentials can access; this starter does not automatically connect GitHub or web services.
 
 **Warning:** `smart-coder "task"` always begins a fresh task. `smart-coder continue "..."` resumes the latest task. Use `continue --task task_...` for an older one. A `needs_input` task requires a follow-up before resumption. A completed task can be reopened with a follow-up; earlier unscoped evidence may become stale.
+
+`force-continue` (or `continue --force`) explicitly grants a fresh `limits.budget_usd` allowance from your current configuration. It preserves lifetime reported and estimated costs, records a budget-refresh event, and resumes the same task. Ordinary `continue` preserves the current allowance. Refreshing does not bypass task locks, active-worker recovery, incomplete cost accounting, or required user answers. Each explicit refresh grants another allowance; it is never applied automatically.
 
 ## 4. How it works
 
