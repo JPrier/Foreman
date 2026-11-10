@@ -101,11 +101,17 @@ smart-coder status
 smart-coder history
 smart-coder show
 smart-coder continue "Use the second approach and explain why"
+smart-coder force-continue --task task_...  # Fresh configured USD allowance
+smart-coder continue --force               # Same, for the latest task
 ```
 
 A path, URL, or project is only relevant *if your task involves one*. The harness itself does not try to discover Git repositories or force you into one. Workers can only access things their OpenCode tools and credentials can access; this starter does not automatically connect GitHub or web services.
 
 **Warning:** `smart-coder "task"` always begins a fresh task. `smart-coder continue "..."` resumes the latest task. Use `continue --task task_...` for an older one. A `needs_input` task requires a follow-up before resumption. A completed task can be reopened with a follow-up; earlier unscoped evidence may become stale.
+
+`force-continue` (or `continue --force`) explicitly grants a fresh `limits.budget_usd` allowance from your current configuration. It preserves lifetime reported and estimated costs, records a budget-refresh event, and resumes the same task. Ordinary `continue` preserves the current allowance. Refreshing does not bypass task locks, active-worker recovery, incomplete cost accounting, or required user answers. Each explicit refresh grants another allowance; it is never applied automatically.
+
+Foreman scripts own spending enforcement, allowance refreshes, accounting, and operational warnings. These controls remain in local state, logs, and operator status; they are not included in director or worker task instructions. Director context includes task evidence without provider cost/usage fields or operational budget-stop notes. User requirements about a project's own costs or budgets remain task content.
 
 ## 4. How it works
 
@@ -159,6 +165,8 @@ Mocks exercise two delegation rounds and the completion decision, but **mock wor
 **First-pass limitations:** The OpenCode worker is a tool-enabled agent but its available tools are determined by your OpenCode installation; no embedded browser or computer-use implementation is bundled. Paid worker use is not strictly capped here. There's no human approval UI for specific dispatched tasks, no cross-worker artifact indexing beyond file paths, no guaranteed recovery of interrupted worker subprocesses, no reliable end-to-end live integration test without credentials, and no sandbox isolation. These are follow-up engineering tasks, not features claimed complete.
 
 For the ledger, report retrieval, recovery limits, model routing and budget behavior, see [reliability.md](docs/reliability.md). For a repeatable direct-orchestration comparison, see [evaluation.md](docs/evaluation.md). These mechanisms do not independently verify model claims or guarantee a hard cost cap.
+
+For a measured real-run investigation of token usage, cost provenance, prompt growth, worker reports, delegation and proof/CI execution, see the [November 2026 findings and reproducible evidence](docs/findings/2026-11-09-smart-coder/README.md).
 
 ### Documentation checked during construction
 

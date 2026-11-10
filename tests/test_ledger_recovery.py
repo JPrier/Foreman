@@ -31,6 +31,33 @@ class Worker:
 
 
 class LedgerRecoveryTests(unittest.TestCase):
+    def test_completed_and_reconciled_assignment_reviews_are_repeatable(self):
+        for status in ("completed", "reconciled"):
+            with self.subTest(status=status):
+                state = new_task("task", "mock")
+                state["assignments"] = {"work": {"status": status}}
+                state["events"].append({"kind": "worker", "id": "review", "ok": True})
+                director = Director([
+                    {"action": "ask_user", "question": "next", "resolved_assignments": {"work": "review"}},
+                    {"action": "ask_user", "question": "next", "resolved_assignments": {"work": "review"}},
+                ])
+                engine = Engine(self.cfg, director=director, worker=Worker(), log=lambda _: None)
+                for _ in range(2):
+                    out = engine.run(state)
+                    self.assertEqual(out["status"], "needs_input")
+                    self.assertEqual(out["assignments"]["work"], {"status": status, "review_worker": "review"})
+
+    def test_assignment_review_still_requires_separate_successful_worker(self):
+        for reviewer, ok in (("work", True), ("review", False), ("missing", True)):
+            with self.subTest(reviewer=reviewer, ok=ok):
+                state = new_task("task", "mock")
+                state["assignments"] = {"work": {"status": "completed"}}
+                state["events"].append({"kind": "worker", "id": "work" if reviewer == "work" else "review", "ok": ok})
+                director = Director([{"action": "ask_user", "question": "next", "resolved_assignments": {"work": reviewer}}])
+                out = Engine(self.cfg, director=director, worker=Worker(), log=lambda _: None).run(state)
+                self.assertEqual(out["status"], "error")
+                self.assertEqual(out["assignments"]["work"], {"status": "completed"})
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.env = patch.dict(os.environ, {"SMART_HARNESS_HOME": self.tmp.name})
@@ -67,6 +94,52 @@ class LedgerRecoveryTests(unittest.TestCase):
         self.assertEqual(outstanding(state), [])
         artifact.write_text("second")
         self.assertIn("stale", outstanding(state)[0])
+
+    def test_rejected_ledger_evidence_returns_feedback_without_dispatch(self):
+        state = new_task("task", "mock")
+        report = save_worker_output(state, "check", "Original worker evidence")
+        state["events"].append({"kind": "worker", "id": "check", "ok": True, "output_path": report})
+        initialize(state)
+        original_ledger = copy.deepcopy(state["ledger"])
+        state.update(status="needs_input", answer="stale previous question")
+        state["requested_reports"] = {"check": {"request": "check", "text": "Original worker evidence"}}
+
+        class NoWorker:
+            def call(self, prompt, read_only):
+                raise AssertionError("Rejected decision dispatched a worker")
+
+        director = Director([
+            {"action": "dispatch", "tasks": [{"id": "must_not_run", "prompt": "mutate"}],
+             "ledger_updates": [
+                 {"id": "extra", "kind": "finding", "text": "must roll back", "status": "open"},
+                 {"id": "objective", "status": "satisfied", "evidence": [
+                     {"worker_id": "check", "artifacts": {"fabricated.txt": "a" * 64}}]},
+             ]},
+            {"action": "finish", "answer": "done", "requirements_reviewed": True, "delivery_required": False,
+             "ledger_updates": [{"id": "objective", "status": "satisfied", "evidence": [{"worker_id": "check"}]}]},
+        ])
+        original_call = director.call
+
+        def inspect_retry(system, prompt):
+            if director.prompts:
+                self.assertEqual(state["ledger"], original_ledger)
+                self.assertNotIn("must_not_run", state.get("assignments", {}))
+                persisted = load(state["id"])
+                self.assertEqual(persisted["status"], "running")
+                self.assertIsNone(persisted["answer"])
+                self.assertEqual(persisted["ledger"], original_ledger)
+                self.assertIn("ledger validation failed", persisted["events"][-1]["message"])
+                self.assertIn("artifact paths and hashes must appear in the worker report", prompt)
+                self.assertIn("Original worker evidence", json.loads(prompt.split("\n", 1)[1])["requested_reports"]["check"]["text"])
+            return original_call(system, prompt)
+
+        director.call = inspect_retry
+        out = Engine(self.cfg, director=director, worker=NoWorker(), log=lambda _: None).run(state)
+        self.assertEqual(out["status"], "done")
+        self.assertEqual(out["director_calls"], 2)
+        self.assertNotIn("extra", out["ledger"])
+        self.assertNotIn("requested_reports", out)
+        self.assertFalse(any(e.get("kind") == "dispatch" for e in out["events"]))
 
     def test_delivery_declaration_requires_delivery_entry(self):
         state = new_task("deliver", "mock")

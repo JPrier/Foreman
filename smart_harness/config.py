@@ -14,7 +14,6 @@ DEFAULTS: dict[str, Any] = {
         "model": "anthropic/claude-opus-5.5",
         "agent": "smart-harness-director",
         "review_stipulations": [],
-        "timeout_seconds": 180,
     },
     "worker": {
         "backend": "opencode",
@@ -25,7 +24,6 @@ DEFAULTS: dict[str, Any] = {
         "expensive_assignment_usd": 0.25,
         "agent": "build",
         "read_only_agent": "plan",
-        "timeout_seconds": 1800,
         "max_report_chars": 4000,
         "working_directory": None,
         "workspace_hints": [],
@@ -114,6 +112,9 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
                 limits["budget_usd"] = min(old_budgets)
             for key in ("premium_budget_usd", "worker_budget_usd", "max_rounds", "max_director_calls", "max_workers_per_round", "max_total_workers", "max_parallel_workers", "max_attempts_per_assignment", "max_reviews_per_subject", "director_token_budget", "worker_token_budget", "token_budget"):
                 limits.pop(key, None)
+        director.pop("timeout_seconds", None)
+        if isinstance(loaded.get("worker"), dict):
+            loaded["worker"].pop("timeout_seconds", None)
         _merge(config, loaded)
     if config["mode"] not in {"mock", "live"}:
         raise ValueError("mode must be mock or live")

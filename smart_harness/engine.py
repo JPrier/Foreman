@@ -66,7 +66,6 @@ class Engine:
         self.worker = worker if worker is not None else (MockWorker() if mode == "mock" else OpenCodeWorker(cfg["worker"]))
 
     def _premium_decision(self, state: dict[str, Any]) -> dict[str, Any]:
-        limits = self.cfg["limits"]
         system = director_system()
         stipulations = self.cfg["director"].get("review_stipulations", [])
         if stipulations:
@@ -113,7 +112,7 @@ class Engine:
             return
         if not state["budget_cost_complete"]:
             raise BudgetError("Cost accounting incomplete; cannot safely enforce the budget")
-        if state["budget_reported_usd"] + state["budget_estimated_usd"] >= self.cfg["limits"]["budget_usd"]:
+        if state["budget_reported_usd"] + state["budget_estimated_usd"] - state.get("budget_start_usd", 0.0) >= self.cfg["limits"]["budget_usd"]:
             raise BudgetError("USD budget reached; task remains unfinished")
 
     def _cost(self, reported, usage, model, mode):
@@ -159,7 +158,7 @@ class Engine:
             state["budget_cost_complete"] = False
         elif source in ("reported", "estimated"):
             state[f"budget_{source}_usd"] += amount
-        self.log(f"Budget: reported ${state['budget_reported_usd']:.4f} + estimated ${state['budget_estimated_usd']:.4f} / ${self.cfg['limits']['budget_usd']:.2f}")
+        self.log(f"Allowance used: ${state['budget_reported_usd'] + state['budget_estimated_usd'] - state.get('budget_start_usd', 0.0):.4f}; lifetime reported ${state['budget_reported_usd']:.4f} + estimated ${state['budget_estimated_usd']:.4f} / ${self.cfg['limits']['budget_usd']:.2f}")
 
     def _one_worker(self, task: dict[str, Any], state: dict[str, Any]) -> tuple[dict[str, Any], WorkerResult]:
         prompt = task["prompt"]
@@ -189,7 +188,8 @@ class Engine:
                 result = self.worker.call(prompt, read_only)
         except Exception as exc:
             message = f"WORKER ERROR: {type(exc).__name__}: {exc}. Worker may have performed partial side effects."
-            result = WorkerResult(message, message, False, None, False)
+            result = WorkerResult(message, message, False, None, False,
+                                  state.get("assignments", {}).get(task["id"], {}).get("session_id"))
         return task, result
 
     def _dispatch(self, state: dict[str, Any], decision: dict[str, Any]) -> None:
@@ -265,7 +265,7 @@ class Engine:
             state["worker_cost_complete"] = state["worker_cost_complete"] and result.cost_complete and result.cost_usd is not None
             if (time.monotonic() - started >= float(self.cfg["worker"]["long_assignment_seconds"]) or
                     (result.cost_usd is not None and result.cost_usd >= float(self.cfg["worker"]["expensive_assignment_usd"]))):
-                state["events"].append({"kind": "note", "at": utcnow(), "message": f"Assignment {task['id']} exceeded a duration or reported-cost warning threshold."})
+                state["events"].append({"kind": "note", "audience": "operator", "at": utcnow(), "message": f"Assignment {task['id']} exceeded a duration or reported-cost warning threshold."})
             self.log(f"  {task['id']}: {'ok' if result.succeeded else 'failed'}; report: {path}")
             save(state)
         if parallel:
@@ -286,7 +286,7 @@ class Engine:
                         record(task, result, started)
         else:
             for task in tasks:
-                if not state["budget_cost_complete"] or state["budget_reported_usd"] + state["budget_estimated_usd"] >= float(limits["budget_usd"]):
+                if not state["budget_cost_complete"] or state["budget_reported_usd"] + state["budget_estimated_usd"] - state.get("budget_start_usd", 0.0) >= float(limits["budget_usd"]):
                     for pending in tasks:
                         if assignments[pending["id"]]["status"] == "queued":
                             assignments[pending["id"]].update({"status": "blocked", "note": "Worker budget reached before this assignment started."})
@@ -334,8 +334,23 @@ class Engine:
             try:
                 self._check_budget(state)
                 decision = self._premium_decision(state)
+                try:
+                    apply_updates(state, decision.get("ledger_updates"))
+                except DecisionError as exc:
+                    # Ledger updates are atomic and precede all decision actions.
+                    # Give the director a chance to correct its evidence without
+                    # dispatching work or consuming the retrieved reports.
+                    state["status"] = "running"
+                    state["answer"] = None
+                    state["events"].append({
+                        "kind": "note", "at": utcnow(),
+                        "message": f"Director decision rejected: ledger validation failed: {exc}. "
+                                   "No action was executed. Use exact evidence from recorded worker reports or retrieve "
+                                   "the full report; never invent missing paths or hashes.",
+                    })
+                    save(state)
+                    continue
                 state.pop("requested_reports", None)
-                apply_updates(state, decision.get("ledger_updates"))
                 resolutions = decision.get("resolved_assignments", {})
                 if not isinstance(resolutions, dict):
                     raise DecisionError("resolved_assignments must map assignment IDs to reviewer IDs")
@@ -343,9 +358,11 @@ class Engine:
                 for ident, reviewer in resolutions.items():
                     assignment = state.get("assignments", {}).get(ident)
                     review = workers.get(reviewer) if isinstance(reviewer, str) else None
-                    if not assignment or assignment.get("status") not in {"failed", "interrupted", "blocked"} or not review or not review.get("ok") or reviewer == ident:
+                    if not assignment or assignment.get("status") not in {"failed", "interrupted", "blocked", "completed", "reconciled"} or not review or not review.get("ok") or reviewer == ident:
                         raise DecisionError("assignment resolution requires a separate successful review worker")
-                    assignment.update({"status": "reconciled", "review_worker": reviewer})
+                    # Completed work may also be reviewed; repeated resolution must
+                    # not stop a resumed task or replay its completed mutations.
+                    assignment.update({"status": "completed" if assignment["status"] == "completed" else "reconciled", "review_worker": reviewer})
                 if decision.get("retrieve_reports"):
                     from pathlib import Path
                     reports = {}
@@ -402,7 +419,8 @@ class Engine:
             except (BudgetError, DecisionError) as exc:
                 state["status"] = "budget_exhausted" if isinstance(exc, BudgetError) else "error"
                 state["answer"] = str(exc)
-                state["events"].append({"kind": "note", "at": utcnow(), "message": str(exc)})
+                state["events"].append({"kind": "note", "at": utcnow(), "message": str(exc),
+                                        **({"audience": "operator"} if isinstance(exc, BudgetError) else {})})
                 save(state)
                 return state
             except Exception as exc:

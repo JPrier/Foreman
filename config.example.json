@@ -4,8 +4,7 @@
     "backend": "openrouter",
     "model": "anthropic/claude-opus-5.5",
     "agent": "smart-harness-director",
-    "review_stipulations": [],
-    "timeout_seconds": 180
+    "review_stipulations": []
   },
   "worker": {
     "backend": "opencode",
@@ -16,7 +15,6 @@
     "expensive_assignment_usd": 0.25,
     "agent": "build",
     "read_only_agent": "plan",
-    "timeout_seconds": 1800,
     "max_report_chars": 4000,
     "working_directory": null,
     "workspace_hints": [],
