@@ -166,6 +166,8 @@ Mocks exercise two delegation rounds and the completion decision, but **mock wor
 
 For the ledger, report retrieval, recovery limits, model routing and budget behavior, see [reliability.md](docs/reliability.md). For a repeatable direct-orchestration comparison, see [evaluation.md](docs/evaluation.md). These mechanisms do not independently verify model claims or guarantee a hard cost cap.
 
+For a measured real-run investigation of token usage, cost provenance, prompt growth, worker reports, delegation and proof/CI execution, see the [November 2026 findings and reproducible evidence](docs/findings/2026-11-09-smart-coder/README.md).
+
 ### Documentation checked during construction
 
 - OpenCode v2 CLI and agents: https://dev.opencode.ai/v2/docs/cli/commands/ and https://dev.opencode.ai/v2/docs/agents/

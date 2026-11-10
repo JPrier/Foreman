@@ -1,0 +1,959 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-11-09",
+  "recorded_window": {
+    "start_utc": "2026-11-09T04:11:34.281223+00:00",
+    "last_worker_finish_utc": "2026-11-09T19:15:09.095874+00:00",
+    "state": "budget_exhausted",
+    "configured_allowance_usd": 20
+  },
+  "definitions": {
+    "accounted_usd": "OpenCode model-metadata calculation, not independently reconciled provider billing",
+    "step": "One parent-session step_finish event; excludes nested sessions unless explicitly listed",
+    "token_counts": "Provider/OpenCode-normalized cumulative counts across steps, not one context length"
+  },
+  "source_versions": {
+    "foreman_pr": "https://github.com/JPrier/Foreman/pull/3",
+    "foreman_audited_branch_head": "da550bdd41c97ab546ae4e567d640b43d12aef2f",
+    "opencode": "1.19.5",
+    "downstream_head": "3ad428884bc465785ec4258b22a3da7bdab5c94a"
+  },
+  "snapshot_sha256": "ec32536897ce0c6461b193b3574f595844413142dc1bf7f8c3d33b906bae2d79",
+  "directors": [
+    {
+      "id": "D01",
+      "at_utc": "2026-11-09T04:11:53.757692+00:00",
+      "accounted_usd": 0.389851,
+      "context_chars": 400135,
+      "tokens": {
+        "total": 152062,
+        "input": 3,
+        "output": 1198,
+        "reasoning": 95,
+        "cache": {
+          "write": 150766,
+          "read": 0
+        }
+      },
+      "next_event": "decision",
+      "action": "ask_user",
+      "packet_chars": 395664,
+      "operator_usage_chars": 197711,
+      "without_operator_fields_chars": 191361
+    },
+    {
+      "id": "D02",
+      "at_utc": "2026-11-09T04:12:52.585467+00:00",
+      "accounted_usd": 0.3943535,
+      "context_chars": 400949,
+      "tokens": {
+        "total": 152606,
+        "input": 3,
+        "output": 1570,
+        "reasoning": 142,
+        "cache": {
+          "write": 150891,
+          "read": 0
+        }
+      },
+      "next_event": "retrieval",
+      "action": null,
+      "packet_chars": 396478,
+      "operator_usage_chars": 197711,
+      "without_operator_fields_chars": 192175
+    },
+    {
+      "id": "D03",
+      "at_utc": "2026-11-09T04:13:19.159034+00:00",
+      "accounted_usd": 0.4048935,
+      "context_chars": 409368,
+      "tokens": {
+        "total": 155718,
+        "input": 3,
+        "output": 2026,
+        "reasoning": 54,
+        "cache": {
+          "write": 153635,
+          "read": 0
+        }
+      },
+      "next_event": "decision",
+      "action": "dispatch",
+      "packet_chars": 404897,
+      "operator_usage_chars": 197711,
+      "without_operator_fields_chars": 200594
+    },
+    {
+      "id": "D04",
+      "at_utc": "2026-11-09T04:31:58.215717+00:00",
+      "accounted_usd": 0.412351,
+      "context_chars": 421888,
+      "tokens": {
+        "total": 160402,
+        "input": 3,
+        "output": 1363,
+        "reasoning": 150,
+        "cache": {
+          "write": 158886,
+          "read": 0
+        }
+      },
+      "next_event": "retrieval",
+      "action": null,
+      "packet_chars": 417417,
+      "operator_usage_chars": 213370,
+      "without_operator_fields_chars": 197206
+    },
+    {
+      "id": "D05",
+      "at_utc": "2026-11-09T04:32:47.523850+00:00",
+      "accounted_usd": 0.4515135,
+      "context_chars": 431675,
+      "tokens": {
+        "total": 166647,
+        "input": 3,
+        "output": 4498,
+        "reasoning": 155,
+        "cache": {
+          "write": 161991,
+          "read": 0
+        }
+      },
+      "next_event": "decision",
+      "action": "dispatch",
+      "packet_chars": 427204,
+      "operator_usage_chars": 213370,
+      "without_operator_fields_chars": 206993
+    },
+    {
+      "id": "D06",
+      "at_utc": "2026-11-09T06:24:45.030674+00:00",
+      "accounted_usd": 0.456886,
+      "context_chars": 470328,
+      "tokens": {
+        "total": 178903,
+        "input": 3,
+        "output": 1124,
+        "reasoning": 160,
+        "cache": {
+          "write": 177616,
+          "read": 0
+        }
+      },
+      "next_event": "retrieval",
+      "action": null,
+      "packet_chars": 465857,
+      "operator_usage_chars": 250274,
+      "without_operator_fields_chars": 208495
+    },
+    {
+      "id": "D07",
+      "at_utc": "2026-11-09T06:25:17.149423+00:00",
+      "accounted_usd": 0.4728835,
+      "context_chars": 479704,
+      "tokens": {
+        "total": 182782,
+        "input": 3,
+        "output": 2038,
+        "reasoning": 86,
+        "cache": {
+          "write": 180655,
+          "read": 0
+        }
+      },
+      "next_event": "decision",
+      "action": "dispatch",
+      "packet_chars": 475233,
+      "operator_usage_chars": 250274,
+      "without_operator_fields_chars": 217871
+    },
+    {
+      "id": "D08",
+      "at_utc": "2026-11-09T06:47:17.997756+00:00",
+      "accounted_usd": 0.474061,
+      "context_chars": 490518,
+      "tokens": {
+        "total": 186307,
+        "input": 3,
+        "output": 988,
+        "reasoning": 118,
+        "cache": {
+          "write": 185198,
+          "read": 0
+        }
+      },
+      "next_event": "retrieval",
+      "action": null,
+      "packet_chars": 486047,
+      "operator_usage_chars": 264674,
+      "without_operator_fields_chars": 214052
+    },
+    {
+      "id": "D09",
+      "at_utc": "2026-11-09T06:48:07.521628+00:00",
+      "accounted_usd": 0.512721,
+      "context_chars": 505601,
+      "tokens": {
+        "total": 193872,
+        "input": 3,
+        "output": 3552,
+        "reasoning": 187,
+        "cache": {
+          "write": 190130,
+          "read": 0
+        }
+      },
+      "next_event": "decision",
+      "action": "dispatch",
+      "packet_chars": 501130,
+      "operator_usage_chars": 264674,
+      "without_operator_fields_chars": 229135
+    },
+    {
+      "id": "D10",
+      "at_utc": "2026-11-09T07:23:17.177801+00:00",
+      "accounted_usd": 0.5016735,
+      "context_chars": 519014,
+      "tokens": {
+        "total": 196737,
+        "input": 3,
+        "output": 1184,
+        "reasoning": 127,
+        "cache": {
+          "write": 195423,
+          "read": 0
+        }
+      },
+      "next_event": "retrieval",
+      "action": null,
+      "packet_chars": 514543,
+      "operator_usage_chars": 278371,
+      "without_operator_fields_chars": 228355
+    },
+    {
+      "id": "D11",
+      "at_utc": "2026-11-09T07:24:01.994755+00:00",
+      "accounted_usd": 1.063927,
+      "context_chars": 543625,
+      "tokens": {
+        "total": 205966,
+        "input": 3,
+        "output": 3365,
+        "reasoning": 45,
+        "cache": {
+          "write": 202553,
+          "read": 0
+        }
+      },
+      "next_event": "decision",
+      "action": "dispatch",
+      "packet_chars": 539154,
+      "operator_usage_chars": 278371,
+      "without_operator_fields_chars": 252966
+    },
+    {
+      "id": "D12",
+      "at_utc": "2026-11-09T07:39:54.349235+00:00",
+      "accounted_usd": 1.036417,
+      "context_chars": 543870,
+      "tokens": {
+        "total": 204836,
+        "input": 3,
+        "output": 1159,
+        "reasoning": 65,
+        "cache": {
+          "write": 203609,
+          "read": 0
+        }
+      },
+      "next_event": "retrieval",
+      "action": null,
+      "packet_chars": 539399,
+      "operator_usage_chars": 287896,
+      "without_operator_fields_chars": 243190
+    },
+    {
+      "id": "D13",
+      "at_utc": "2026-11-09T07:40:58.795217+00:00",
+      "accounted_usd": 1.126072,
+      "context_chars": 565273,
+      "tokens": {
+        "total": 215069,
+        "input": 3,
+        "output": 4822,
+        "reasoning": 251,
+        "cache": {
+          "write": 209993,
+          "read": 0
+        }
+      },
+      "next_event": "decision",
+      "action": "dispatch",
+      "packet_chars": 560802,
+      "operator_usage_chars": 287896,
+      "without_operator_fields_chars": 264593
+    },
+    {
+      "id": "D14",
+      "at_utc": "2026-11-09T08:17:02.475915+00:00",
+      "accounted_usd": 1.093592,
+      "context_chars": 573152,
+      "tokens": {
+        "total": 215759,
+        "input": 3,
+        "output": 1392,
+        "reasoning": 88,
+        "cache": {
+          "write": 214276,
+          "read": 0
+        }
+      },
+      "next_event": "retrieval",
+      "action": null,
+      "packet_chars": 568681,
+      "operator_usage_chars": 305027,
+      "without_operator_fields_chars": 255094
+    },
+    {
+      "id": "D15",
+      "at_utc": "2026-11-09T08:17:40.717514+00:00",
+      "accounted_usd": 1.119977,
+      "context_chars": 580694,
+      "tokens": {
+        "total": 219202,
+        "input": 3,
+        "output": 2346,
+        "reasoning": 51,
+        "cache": {
+          "write": 216802,
+          "read": 0
+        }
+      },
+      "next_event": "decision",
+      "action": "dispatch",
+      "packet_chars": 576223,
+      "operator_usage_chars": 305027,
+      "without_operator_fields_chars": 262636
+    },
+    {
+      "id": "D16",
+      "at_utc": "2026-11-09T08:24:27.803829+00:00",
+      "accounted_usd": 1.117672,
+      "context_chars": 587024,
+      "tokens": {
+        "total": 220837,
+        "input": 3,
+        "output": 1312,
+        "reasoning": 37,
+        "cache": {
+          "write": 219485,
+          "read": 0
+        }
+      },
+      "next_event": "retrieval",
+      "action": null,
+      "packet_chars": 582553,
+      "operator_usage_chars": 313556,
+      "without_operator_fields_chars": 260203
+    },
+    {
+      "id": "D17",
+      "at_utc": "2026-11-09T08:25:25.933097+00:00",
+      "accounted_usd": 1.182187,
+      "context_chars": 598487,
+      "tokens": {
+        "total": 227578,
+        "input": 3,
+        "output": 4313,
+        "reasoning": 117,
+        "cache": {
+          "write": 223145,
+          "read": 0
+        }
+      },
+      "next_event": "note",
+      "action": "ledger_rejected",
+      "packet_chars": 594016,
+      "operator_usage_chars": 313556,
+      "without_operator_fields_chars": 271666
+    },
+    {
+      "id": "D18",
+      "at_utc": "2026-11-09T08:26:21.657915+00:00",
+      "accounted_usd": 1.177257,
+      "context_chars": 598814,
+      "tokens": {
+        "total": 227302,
+        "input": 3,
+        "output": 3904,
+        "reasoning": 171,
+        "cache": {
+          "write": 223224,
+          "read": 0
+        }
+      },
+      "next_event": "decision",
+      "action": "dispatch",
+      "packet_chars": 594343,
+      "operator_usage_chars": 313556,
+      "without_operator_fields_chars": 271993
+    }
+  ],
+  "workers": [
+    {
+      "id": "review_I6a_repaired_checkpoint",
+      "steps": 150,
+      "cost": 0.45742983449999997,
+      "input": 332149,
+      "output": 32265,
+      "reasoning": 34736,
+      "cache_read": 14691392,
+      "summary_chars": 4000,
+      "report_chars": 9434
+    },
+    {
+      "id": "implement_I6b_world_integration",
+      "steps": 356,
+      "cost": 2.2918666224999997,
+      "input": 976749,
+      "output": 77570,
+      "reasoning": 84087,
+      "cache_read": 74857600,
+      "summary_chars": 4000,
+      "report_chars": 8625
+    },
+    {
+      "id": "review_I6b_world_checkpoint",
+      "steps": 138,
+      "cost": 0.490853379,
+      "input": 139010,
+      "output": 40270,
+      "reasoning": 44658,
+      "cache_read": 15971584,
+      "summary_chars": 4000,
+      "report_chars": 14632
+    },
+    {
+      "id": "repair_I6b_window_cooldown",
+      "steps": 100,
+      "cost": 0.30591090100000007,
+      "input": 245294,
+      "output": 19051,
+      "reasoning": 49253,
+      "cache_read": 9734144,
+      "summary_chars": 4000,
+      "report_chars": 6805
+    },
+    {
+      "id": "map_remaining_design_acceptance",
+      "steps": 29,
+      "cost": 0.07383684200000001,
+      "input": 171814,
+      "output": 7831,
+      "reasoning": 14420,
+      "cache_read": 2207808,
+      "summary_chars": 4000,
+      "report_chars": 17293
+    },
+    {
+      "id": "review_I6b_cooldown_repair_acceptance",
+      "steps": 36,
+      "cost": 0.06297881450000002,
+      "input": 167097,
+      "output": 10076,
+      "reasoning": 11159,
+      "cache_read": 1853952,
+      "summary_chars": 4000,
+      "report_chars": 8262
+    },
+    {
+      "id": "resolve_observer_and_action_contract_policy",
+      "steps": 53,
+      "cost": 0.10718139400000001,
+      "input": 93410,
+      "output": 7256,
+      "reasoning": 29197,
+      "cache_read": 3367552,
+      "summary_chars": 4000,
+      "report_chars": 12622
+    },
+    {
+      "id": "implement_I7_emergent_quests",
+      "steps": 165,
+      "cost": 0.5710189524999999,
+      "input": 325905,
+      "output": 36410,
+      "reasoning": 50715,
+      "cache_read": 18428992,
+      "summary_chars": 4000,
+      "report_chars": 7296
+    },
+    {
+      "id": "review_I7_production_acceptance",
+      "steps": 82,
+      "cost": 0.1685643405,
+      "input": 86225,
+      "output": 16447,
+      "reasoning": 17754,
+      "cache_read": 5427904,
+      "summary_chars": 4000,
+      "report_chars": 11184
+    },
+    {
+      "id": "implement_I8_production_formal_gates",
+      "steps": 453,
+      "cost": 2.7400308049999977,
+      "input": 11923042,
+      "output": 113869,
+      "reasoning": 92777,
+      "cache_read": 77448576,
+      "summary_chars": 4000,
+      "report_chars": 9729
+    }
+  ],
+  "all_assignments": [
+    {
+      "id": "discover_design_repo",
+      "started_at_utc": "2026-11-06T05:29:17.942998+00:00",
+      "finished_at_utc": "2026-11-06T05:31:58.916055+00:00",
+      "elapsed_seconds": 160.97,
+      "accounted_usd": 0.022827239999999995,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": null
+    },
+    {
+      "id": "plan_full_engine",
+      "started_at_utc": "2026-11-07T05:02:40.079615+00:00",
+      "finished_at_utc": "2026-11-07T05:17:37.375434+00:00",
+      "elapsed_seconds": 897.293,
+      "accounted_usd": 0.0426906233,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": null
+    },
+    {
+      "id": "implement_engine_foundation",
+      "started_at_utc": "2026-11-07T05:18:12.293823+00:00",
+      "finished_at_utc": "2026-11-07T05:47:34.852981+00:00",
+      "elapsed_seconds": 1762.555,
+      "accounted_usd": 1.0644844138999998,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": null
+    },
+    {
+      "id": "review_engine_plan",
+      "started_at_utc": "2026-11-07T05:47:34.856421+00:00",
+      "finished_at_utc": "2026-11-07T05:49:31.744755+00:00",
+      "elapsed_seconds": 116.885,
+      "accounted_usd": 0.011982185199999999,
+      "status": "completed",
+      "review_of": "plan_full_engine",
+      "retry_of": null
+    },
+    {
+      "id": "correct_engine_plan",
+      "started_at_utc": "2026-11-07T05:50:27.831934+00:00",
+      "finished_at_utc": "2026-11-07T05:55:30.942335+00:00",
+      "elapsed_seconds": 303.107,
+      "accounted_usd": 0.05873868130000001,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": "plan_full_engine"
+    },
+    {
+      "id": "verify_engine_foundation",
+      "started_at_utc": "2026-11-07T05:55:30.946011+00:00",
+      "finished_at_utc": "2026-11-07T06:00:26.754144+00:00",
+      "elapsed_seconds": 295.805,
+      "accounted_usd": 0.14555932950000003,
+      "status": "completed",
+      "review_of": "implement_engine_foundation",
+      "retry_of": null
+    },
+    {
+      "id": "review_corrected_engine_plan",
+      "started_at_utc": "2026-11-07T06:01:39.853900+00:00",
+      "finished_at_utc": "2026-11-07T06:03:48.945191+00:00",
+      "elapsed_seconds": 129.088,
+      "accounted_usd": 0.0093107104,
+      "status": "completed",
+      "review_of": "correct_engine_plan",
+      "retry_of": null
+    },
+    {
+      "id": "repair_foundation_findings",
+      "started_at_utc": "2026-11-07T06:03:48.948941+00:00",
+      "finished_at_utc": "2026-11-07T06:15:49.593163+00:00",
+      "elapsed_seconds": 720.64,
+      "accounted_usd": 0.3177148191999999,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": "implement_engine_foundation"
+    },
+    {
+      "id": "verify_foundation_repairs",
+      "started_at_utc": "2026-11-07T06:26:39.930990+00:00",
+      "finished_at_utc": "2026-11-07T06:31:55.331758+00:00",
+      "elapsed_seconds": 315.397,
+      "accounted_usd": 0.04500689940000001,
+      "status": "completed",
+      "review_of": "repair_foundation_findings",
+      "retry_of": null
+    },
+    {
+      "id": "execute_foundation_acceptance_gate",
+      "started_at_utc": "2026-11-07T06:32:47.655782+00:00",
+      "finished_at_utc": "2026-11-07T06:35:38.775953+00:00",
+      "elapsed_seconds": 171.116,
+      "accounted_usd": 0.023570979999999995,
+      "status": "completed",
+      "review_of": "repair_foundation_findings",
+      "retry_of": null
+    },
+    {
+      "id": "implement_phase2_goals_contracts",
+      "started_at_utc": "2026-11-07T06:37:19.978040+00:00",
+      "finished_at_utc": "2026-11-07T07:07:25.190168+00:00",
+      "elapsed_seconds": 1805.208,
+      "accounted_usd": 1.6481066600000003,
+      "status": "reconciled",
+      "review_of": null,
+      "retry_of": null
+    },
+    {
+      "id": "review_recovered_phase2",
+      "started_at_utc": "2026-11-07T15:35:45.496755+00:00",
+      "finished_at_utc": "2026-11-07T15:40:17.791050+00:00",
+      "elapsed_seconds": 272.29,
+      "accounted_usd": 0.11285094999999999,
+      "status": "completed",
+      "review_of": "implement_phase2_goals_contracts",
+      "retry_of": null
+    },
+    {
+      "id": "repair_phase2_review_findings",
+      "started_at_utc": "2026-11-07T15:41:28.313341+00:00",
+      "finished_at_utc": "2026-11-07T16:05:00.447310+00:00",
+      "elapsed_seconds": 1412.129,
+      "accounted_usd": 0.3394553900000001,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": "implement_phase2_goals_contracts"
+    },
+    {
+      "id": "verify_phase2_repairs",
+      "started_at_utc": "2026-11-07T16:05:42.344244+00:00",
+      "finished_at_utc": "2026-11-07T16:10:46.315584+00:00",
+      "elapsed_seconds": 303.966,
+      "accounted_usd": 0.07051668000000001,
+      "status": "completed",
+      "review_of": "repair_phase2_review_findings",
+      "retry_of": null
+    },
+    {
+      "id": "discover_formal_execution_route",
+      "started_at_utc": "2026-11-07T16:05:42.349707+00:00",
+      "finished_at_utc": "2026-11-07T16:07:54.017955+00:00",
+      "elapsed_seconds": 131.663,
+      "accounted_usd": 0.01600202,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": null
+    },
+    {
+      "id": "execute_phase2_repair_acceptance",
+      "started_at_utc": "2026-11-07T16:11:51.426249+00:00",
+      "finished_at_utc": "2026-11-07T16:13:12.536602+00:00",
+      "elapsed_seconds": 81.105,
+      "accounted_usd": 0.02154856,
+      "status": "completed",
+      "review_of": "repair_phase2_review_findings",
+      "retry_of": null
+    },
+    {
+      "id": "implement_phase3_contextual_minds",
+      "started_at_utc": "2026-11-07T16:14:08.862780+00:00",
+      "finished_at_utc": "2026-11-07T16:43:42.333928+00:00",
+      "elapsed_seconds": 1773.466,
+      "accounted_usd": 1.2395694600000007,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": null
+    },
+    {
+      "id": "review_phase3_integrated_acceptance",
+      "started_at_utc": "2026-11-07T16:44:50.895967+00:00",
+      "finished_at_utc": "2026-11-07T16:47:38.792974+00:00",
+      "elapsed_seconds": 167.891,
+      "accounted_usd": 0.027359970000000004,
+      "status": "completed",
+      "review_of": "implement_phase3_contextual_minds",
+      "retry_of": null
+    },
+    {
+      "id": "implement_phase3_D1_and_phase4_mechanics",
+      "started_at_utc": "2026-11-07T17:01:35.107807+00:00",
+      "finished_at_utc": "2026-11-07T17:26:16.005050+00:00",
+      "elapsed_seconds": 1480.89,
+      "accounted_usd": 1.2247344199999999,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": "implement_phase3_contextual_minds"
+    },
+    {
+      "id": "review_checkpoint_D1_I5_current",
+      "started_at_utc": "2026-11-07T18:40:03.415511+00:00",
+      "finished_at_utc": "2026-11-07T18:46:20.873469+00:00",
+      "elapsed_seconds": 377.451,
+      "accounted_usd": 0.16429489000000003,
+      "status": "completed",
+      "review_of": "implement_phase3_D1_and_phase4_mechanics",
+      "retry_of": null
+    },
+    {
+      "id": "repair_query_privacy_contextual_breaches",
+      "started_at_utc": "2026-11-07T18:47:17.366071+00:00",
+      "finished_at_utc": "2026-11-07T19:13:45.012438+00:00",
+      "elapsed_seconds": 1587.639,
+      "accounted_usd": 0.70375719,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": "implement_phase3_D1_and_phase4_mechanics"
+    },
+    {
+      "id": "review_privacy_breach_checkpoint",
+      "started_at_utc": "2026-11-07T19:14:32.299632+00:00",
+      "finished_at_utc": "2026-11-07T19:20:03.495698+00:00",
+      "elapsed_seconds": 331.189,
+      "accounted_usd": 0.11109356999999999,
+      "status": "completed",
+      "review_of": "repair_query_privacy_contextual_breaches",
+      "retry_of": null
+    },
+    {
+      "id": "repair_web_save_version_checkpoint",
+      "started_at_utc": "2026-11-07T19:21:24.108618+00:00",
+      "finished_at_utc": "2026-11-07T19:39:20.938311+00:00",
+      "elapsed_seconds": 1076.822,
+      "accounted_usd": 0.06914512,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": null
+    },
+    {
+      "id": "review_web_checkpoint_delivery",
+      "started_at_utc": "2026-11-07T19:40:03.869587+00:00",
+      "finished_at_utc": "2026-11-07T19:41:35.028930+00:00",
+      "elapsed_seconds": 91.152,
+      "accounted_usd": 0.017560540000000003,
+      "status": "completed",
+      "review_of": "repair_web_save_version_checkpoint",
+      "retry_of": null
+    },
+    {
+      "id": "implement_I6a_autonomous_planner",
+      "started_at_utc": "2026-11-07T19:42:31.243969+00:00",
+      "finished_at_utc": "2026-11-07T20:44:29.018355+00:00",
+      "elapsed_seconds": 3717.765,
+      "accounted_usd": 1.9633772299999992,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": null
+    },
+    {
+      "id": "review_I6a_production_checkpoint",
+      "started_at_utc": "2026-11-07T20:45:22.553074+00:00",
+      "finished_at_utc": "2026-11-07T21:03:11.760903+00:00",
+      "elapsed_seconds": 1069.2,
+      "accounted_usd": 0.24247917000000002,
+      "status": "completed",
+      "review_of": "implement_I6a_autonomous_planner",
+      "retry_of": null
+    },
+    {
+      "id": "repair_I6a_acceptance_defects",
+      "started_at_utc": "2026-11-07T21:04:06.538092+00:00",
+      "finished_at_utc": "2026-11-07T21:44:37.651553+00:00",
+      "elapsed_seconds": 2431.104,
+      "accounted_usd": 0.8102334800000001,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": "implement_I6a_autonomous_planner"
+    },
+    {
+      "id": "review_I6a_repaired_checkpoint",
+      "started_at_utc": "2026-11-09T04:13:19.194360+00:00",
+      "finished_at_utc": "2026-11-09T04:31:35.067494+00:00",
+      "elapsed_seconds": 1095.863,
+      "accounted_usd": 0.45742983449999997,
+      "status": "completed",
+      "review_of": "repair_I6a_acceptance_defects",
+      "retry_of": null
+    },
+    {
+      "id": "implement_I6b_world_integration",
+      "started_at_utc": "2026-11-09T04:32:47.556725+00:00",
+      "finished_at_utc": "2026-11-09T06:24:25.861999+00:00",
+      "elapsed_seconds": 6698.295,
+      "accounted_usd": 2.2918666224999997,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": null
+    },
+    {
+      "id": "review_I6b_world_checkpoint",
+      "started_at_utc": "2026-11-09T06:25:17.180709+00:00",
+      "finished_at_utc": "2026-11-09T06:46:59.921634+00:00",
+      "elapsed_seconds": 1302.731,
+      "accounted_usd": 0.490853379,
+      "status": "completed",
+      "review_of": "implement_I6b_world_integration",
+      "retry_of": null
+    },
+    {
+      "id": "repair_I6b_window_cooldown",
+      "started_at_utc": "2026-11-09T06:48:07.556344+00:00",
+      "finished_at_utc": "2026-11-09T07:14:18.358178+00:00",
+      "elapsed_seconds": 1570.79,
+      "accounted_usd": 0.30591090100000007,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": "implement_I6b_world_integration"
+    },
+    {
+      "id": "map_remaining_design_acceptance",
+      "started_at_utc": "2026-11-09T07:14:18.369697+00:00",
+      "finished_at_utc": "2026-11-09T07:22:55.385069+00:00",
+      "elapsed_seconds": 517.004,
+      "accounted_usd": 0.07383684200000001,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": null
+    },
+    {
+      "id": "review_I6b_cooldown_repair_acceptance",
+      "started_at_utc": "2026-11-09T07:24:02.028672+00:00",
+      "finished_at_utc": "2026-11-09T07:30:10.903836+00:00",
+      "elapsed_seconds": 368.864,
+      "accounted_usd": 0.06297881450000002,
+      "status": "completed",
+      "review_of": "repair_I6b_window_cooldown",
+      "retry_of": null
+    },
+    {
+      "id": "resolve_observer_and_action_contract_policy",
+      "started_at_utc": "2026-11-09T07:30:10.914763+00:00",
+      "finished_at_utc": "2026-11-09T07:39:36.592558+00:00",
+      "elapsed_seconds": 565.667,
+      "accounted_usd": 0.10718139400000001,
+      "status": "completed",
+      "review_of": "map_remaining_design_acceptance",
+      "retry_of": null
+    },
+    {
+      "id": "implement_I7_emergent_quests",
+      "started_at_utc": "2026-11-09T07:40:58.832005+00:00",
+      "finished_at_utc": "2026-11-09T08:16:40.575958+00:00",
+      "elapsed_seconds": 2141.733,
+      "accounted_usd": 0.5710189524999999,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": null
+    },
+    {
+      "id": "review_I7_production_acceptance",
+      "started_at_utc": "2026-11-09T08:17:40.753234+00:00",
+      "finished_at_utc": "2026-11-09T08:24:09.181676+00:00",
+      "elapsed_seconds": 388.414,
+      "accounted_usd": 0.1685643405,
+      "status": "completed",
+      "review_of": "implement_I7_emergent_quests",
+      "retry_of": null
+    },
+    {
+      "id": "implement_I8_production_formal_gates",
+      "started_at_utc": "2026-11-09T08:26:21.695287+00:00",
+      "finished_at_utc": "2026-11-09T19:15:09.095874+00:00",
+      "elapsed_seconds": 38927.389,
+      "accounted_usd": 2.7400308049999977,
+      "status": "completed",
+      "review_of": null,
+      "retry_of": null
+    }
+  ],
+  "recorded_model_catalog_costs_per_million": {
+    "openai/gpt-6.1-sol": {
+      "input": 2,
+      "output": 10,
+      "cache_read": 0.1,
+      "cache_write": 2.5,
+      "tiers": [
+        {
+          "input": 4,
+          "output": 15,
+          "cache_read": 0.2,
+          "cache_write": 5,
+          "tier": {
+            "type": "context",
+            "size": 272000
+          }
+        }
+      ],
+      "context_over_200k": {
+        "input": 4,
+        "output": 15,
+        "cache_read": 0.2,
+        "cache_write": 5
+      }
+    },
+    "z-ai/glm-5.3-flash": {
+      "input": 0.0335,
+      "output": 0.083,
+      "cache_read": 0.03
+    }
+  },
+  "public_model_catalog_comparison_at_inspection": {
+    "source": "https://openrouter.ai/api/v1/models",
+    "worker": {
+      "input_per_million": 0.15,
+      "cache_read_per_million": 0.03,
+      "output_per_million": 0.5
+    },
+    "warning": "Not historical billed rates; applying these to historical token counts is only a counterfactual."
+  },
+  "nested_sessions": [
+    {
+      "label": "I6b-explore-1",
+      "parent_worker": "implement_I6b_world_integration",
+      "accounted_usd": 0.0633096685
+    },
+    {
+      "label": "I6b-explore-2",
+      "parent_worker": "implement_I6b_world_integration",
+      "accounted_usd": 0.115839599
+    }
+  ],
+  "i8": {
+    "tool_calls": 508,
+    "tool_counts": {
+      "bash": 337,
+      "edit": 121,
+      "write": 38,
+      "read": 11,
+      "webfetch": 1
+    },
+    "tool_reported_elapsed_seconds": 34227.948,
+    "sleep_containing_commands": 64,
+    "ci_oriented_sleep_commands": 8,
+    "ci_oriented_sleep_elapsed_minutes": 42.761783333333334,
+    "zero_cache_read_steps": 44,
+    "zero_cache_read_step_uncached_tokens": 10384511,
+    "whole_package_attempt_seconds": [
+      5400.271,
+      5500.285
+    ],
+    "interpretation": "Elapsed tool time is not CPU or idle time; no source edits were recorded between the two whole-package attempts."
+  }
+}
