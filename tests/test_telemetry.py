@@ -271,3 +271,10 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(self.store.metrics('r')['cost']['unknown_cost_calls'],1)
         self.assertEqual(self.store.metrics('r')['cost']['selected_known_usd'],'0')
         self.assertIsNone(self.store.metrics('r')['cost']['selected_total_usd'])
+
+    def test_missing_categories_and_child_evidence_are_incomplete(self):
+        usage=normalize({'prompt_tokens':10,'completion_tokens':5},'openrouter')
+        self.assertFalse(usage['usage_complete'])
+        self.store.task('r','child',parent_task_id='root')
+        self.store.event('r','session.linked',task_id='child',payload={'session_id':'unseen'})
+        self.assertTrue(all(not t['cost_complete'] for t in self.store.tree('r')))

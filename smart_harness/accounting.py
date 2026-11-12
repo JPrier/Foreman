@@ -55,7 +55,8 @@ def normalize(raw, source):
         method = 'openrouter-inclusive-prompt-and-completion'
     else:
         method = 'unsupported-schema'
-    return {**result, 'usage_complete': result['input_total_tokens'] is not None and result['output_total_tokens'] is not None,
+    return {**result, 'usage_complete': all(result[k] is not None for k in ('input_uncached_tokens', 'input_cache_read_tokens',
+                'input_cache_write_tokens', 'input_total_tokens', 'output_total_tokens', 'reasoning_tokens')),
             'normalization_method': method, 'source_raw': raw}
 
 

@@ -300,7 +300,15 @@ class Telemetry:
                 parent = tasks.get(parent, {}).get('parent_task_id')
             task['ancestors'] = ancestors
         costs = {i: Decimal(0) for i in tasks}
-        unknown = set()
+        events = self.timeline(run_id)
+        enumerated = {e['payload'].get('session_id') for e in events if e['kind'] == 'session.enumerated'}
+        recovered = {e['payload'].get('session_id') for e in events if e['kind'] == 'session.recovered'}
+        unknown = {e['task_id'] for e in events if
+            (e['kind'] == 'session.linked' and e['payload'].get('session_id') not in enumerated) or
+            (e['kind'] == 'session.incomplete' and e['payload'].get('session_id') not in recovered) or
+            e['kind'] in ('adapter.failure', 'telemetry.failure')}
+        if None in unknown:
+            unknown.update(tasks)
         units = {}
         for call in self.calls(run_id):
             key = (call.get('provider_scope', 'default'), call.get('generation_id') or call['call_id'])
