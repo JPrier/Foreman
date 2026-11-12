@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "suite_id": "foreman-smoke-v1",
+  "cache_policy": "uncontrolled",
+  "description": "Pinned repair and helper overhead smoke test; trusted scorer lives outside fixtures.",
+  "tasks": [
+    {
+      "case_id": "repair-simple",
+      "repo_fixture": "fixtures/repair-simple",
+      "revision": "24555ee57dd948921c6c7403cb7f28359c24304eadd84b79ef164355e7c46b0e",
+      "prompt_file": "prompts/repair-simple.md",
+      "acceptance": [
+        {
+          "kind": "command",
+          "id": "behavior",
+          "registered_check": "repair-simple"
+        },
+        {
+          "kind": "git-diff",
+          "id": "scope",
+          "allowed_paths": [
+            "arithmetic.py"
+          ]
+        }
+      ]
+    }
+  ],
+  "variants": {
+    "baseline": {
+      "strategy": "direct"
+    },
+    "tiny-prompt-helper": {
+      "strategy": "delegate-with-helper"
+    },
+    "recursive": {
+      "strategy": "adaptive-recursion"
+    }
+  }
+}

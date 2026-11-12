@@ -9,6 +9,7 @@ from typing import Any
 
 DEFAULTS: dict[str, Any] = {
     "mode": "mock",
+    "telemetry": {"strict": False, "opencode_url": None},
     "director": {
         "backend": "openrouter",
         "model": "anthropic/claude-opus-5.5",
@@ -115,6 +116,13 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
             for key in ("premium_budget_usd", "worker_budget_usd", "max_rounds", "max_director_calls", "max_workers_per_round", "max_total_workers", "max_parallel_workers", "max_attempts_per_assignment", "max_reviews_per_subject", "director_token_budget", "worker_token_budget", "token_budget"):
                 limits.pop(key, None)
         _merge(config, loaded)
+    if not isinstance(config['telemetry']['strict'], bool):
+        raise ValueError('telemetry.strict must be boolean')
+    if config['telemetry']['opencode_url'] is not None:
+        if not isinstance(config['telemetry']['opencode_url'], str):
+            raise ValueError('telemetry.opencode_url must be a loopback URL or null')
+        from .observe import session_fetcher
+        session_fetcher(config['telemetry']['opencode_url'])
     if config["mode"] not in {"mock", "live"}:
         raise ValueError("mode must be mock or live")
     if config["director"]["backend"] not in {"openrouter", "opencode"}:

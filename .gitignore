@@ -6,3 +6,8 @@ __pycache__/
 .env
 config.local.json
 .runtime/
+
+checks.local.json
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
