@@ -1,11 +1,13 @@
 """Plan/delegate/evaluate loop; no directory, programming or repo assumptions."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
 import threading
 import math
+import uuid
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
@@ -46,6 +48,7 @@ def subscription_equivalent(usage: dict[str, Any], cfg: dict[str, Any]) -> float
 
 class Engine:
     def __init__(self, cfg: dict[str, Any], *, director: Any = None, worker: Any = None, log: Log = print):
+        self.telemetry = None
         self.cfg = cfg
         self.log = log
         self._lock = threading.RLock()
@@ -79,22 +82,53 @@ class Engine:
         state["premium_reserved_usd"] = round(state["premium_reserved_usd"] + reserved, 6)
         save(state)
         started = time.monotonic()
+        call_id = 'call_' + uuid.uuid4().hex
+        run_id = state['telemetry_run_id']
+        role = 'director'
+        self.telemetry.update_call(call_id, run_id=run_id, task_id=state['id'], attempt_id=self.attempt_id,
+            actor_role=role, model_id=self.cfg['director']['model'], provider_id=self.cfg['director']['backend'])
+        self.telemetry.event(run_id, 'llm.started', task_id=state['id'], payload={'call_id': call_id})
+        def capture(obj):
+            from .accounting import normalize
+            raw = obj.get('usage') or {}
+            self.telemetry.update_call(call_id, generation_id=obj.get('id'), usage=normalize(raw, 'openrouter'),
+                finished_utc=utcnow(), accounting_status='observed')
+            self.telemetry.charge(call_id, 'default', obj.get('id'), 'openrouter_response', raw.get('cost'), {'usage': raw})
+        if isinstance(self.director, OpenRouterDirector):
+            self.director.on_response = capture
+        if isinstance(self.director, OpenCodeDirector):
+            self.director.on_event = lambda event: self.telemetry.opencode(run_id, state['id'], event,
+                role='director', attempt_id=self.attempt_id, model=self.cfg['director']['model'],
+                billing_mode=None if self.cfg['director']['model'].startswith('openrouter/') else 'subscription')
         try:
             result = self.director.call(system, user)
         except Exception as exc:
+            self.telemetry.event(run_id, "llm.unknown", task_id=state["id"], payload={"call_id": call_id, "reason": type(exc).__name__})
             state["events"].append({"kind": "director", "at": utcnow(), "outcome": "error",
                                     "error": str(exc), "elapsed_seconds": round(time.monotonic() - started, 3),
-                                    "context_chars": len(system) + len(user), "reported_cost_usd": None,
+                                    "context_chars": len(system) + len(user), "reported_cost_usd": None, "telemetry_call_id": call_id,
                                     "reserved_usd": reserved, "usage": None})
             save(state)
             raise
+        if isinstance(self.director, OpenCodeDirector):
+            if not result.usage.get('token_events_complete'):
+                self.telemetry.event(run_id, 'session.incomplete', task_id=state['id'], payload={'reason': 'director_stream_incomplete'})
+            # Session steps are billable units; placeholder is only a logical boundary.
+            self.telemetry.update_call(call_id, accounting_status='boundary')
+        else:
+            if not isinstance(self.director, OpenRouterDirector):
+                capture({'id': getattr(result, 'generation_id', None), 'usage': result.usage})
+            self.telemetry.update_call(call_id, finished_utc=utcnow())
+            if state['mode'] == 'mock':
+                self.telemetry.charge(call_id, 'default', None, 'mock', 0)
+        self.telemetry.event(run_id, 'llm.completed', task_id=state['id'], payload={'call_id': call_id})
         if result.cost_usd is not None:
             if needs_usd_budget:
                 state["premium_reserved_usd"] = round(max(0, state["premium_reserved_usd"] - reserved), 6)
             state["premium_spent_usd"] = round(state["premium_spent_usd"] + result.cost_usd, 6)
         # If provider omits the cost, the conservative reserve remains allocated.
         state["events"].append({
-            "kind": "director", "at": utcnow(), "cost_usd": result.cost_usd,
+            "kind": "director", "at": utcnow(), "cost_usd": result.cost_usd, "telemetry_call_id": call_id,
             "reserved_usd": reserved, "usage": result.usage,
             "context_chars": len(system) + len(user),
             "elapsed_seconds": round(time.monotonic() - started, 3),
@@ -102,6 +136,10 @@ class Engine:
             "api_equivalent_estimate_usd": None,
         })
         amount, source = self._cost(result.cost_usd, result.usage, self.cfg["director"]["model"], state["mode"])
+        if isinstance(self.director, OpenCodeDirector):
+            self._estimate_missing_steps(run_id, state['id'], self.cfg['director']['model'], state['mode'])
+        if source == 'estimated':
+            self.telemetry.charge(call_id, 'default', getattr(result, 'generation_id', None), 'estimated', amount)
         self._record_cost(state, amount, source)
         state["events"][-1].update({"budget_cost_usd": amount, "budget_cost_source": source,
                                     "api_equivalent_estimate_usd": amount if source == "estimated" else None})
@@ -139,6 +177,8 @@ class Engine:
                 if any(not isinstance(x, int) or isinstance(x, bool) or x < 0 for x in (inp, out, reasoning)):
                     raise ValueError("token breakdown unavailable")
                 cache = step.get("cache") or {}
+                if any(not isinstance(cache.get(k, 0), int) or isinstance(cache.get(k, 0), bool) or cache.get(k, 0) < 0 for k in ('read', 'write')):
+                    raise ValueError('invalid cache token count')
                 size = inp + (cache.get("read") or 0) + (cache.get("write") or 0)
                 rates = pricing
                 for override in sorted(pricing.get("overrides", []), key=lambda x: x.get("min_prompt_tokens", 0)):
@@ -146,9 +186,10 @@ class Engine:
                         rates = {**rates, **override}
                 p, c = float(rates["prompt"]), float(rates["completion"])
                 w = float(rates.get("input_cache_write", p))
-                if not all(math.isfinite(x) and x >= 0 for x in (p, c, w)):
+                r = float(rates.get("input_cache_read", p))
+                if not all(math.isfinite(x) and x >= 0 for x in (p, c, w, r)):
                     raise ValueError("invalid price")
-                total += inp * p + (cache.get("write") or 0) * w + (out + reasoning) * c
+                total += inp * p + (cache.get("read") or 0) * r + (cache.get("write") or 0) * w + (out + reasoning) * c
             return total, "estimated"
         except (OSError, ValueError, KeyError, TypeError) as exc:
             self.log(f"Cost unavailable for {model}: {exc}")
@@ -164,6 +205,11 @@ class Engine:
     def _one_worker(self, task: dict[str, Any], state: dict[str, Any]) -> tuple[dict[str, Any], WorkerResult]:
         prompt = task["prompt"]
         read_only = task.get("read_only", False)
+        run_id = state['telemetry_run_id']
+        worker_attempt = self.attempt_id + '.' + task['id']
+        self.telemetry.task(run_id, task['id'], parent_task_id=task.get('parent_task_id') or state['id'], status='running',
+            contract_sha256=hashlib.sha256(prompt.encode()).hexdigest())
+        self.telemetry.event(run_id, 'task.assigned', task_id=task['id'], attempt_id=worker_attempt)
         try:
             if isinstance(self.worker, OpenCodeWorker):
                 def lifecycle(update: dict[str, Any]) -> None:
@@ -172,11 +218,14 @@ class Engine:
                     with self._lock:
                         event = update.pop("event", None)
                         if event is not None:
+                            self.telemetry.opencode(run_id, task['id'], event, attempt_id=worker_attempt,
+                                role='reviewer' if task.get('review_of') else 'worker', model=task.get('selected_model'))
                             from .storage import task_dir
                             path = task_dir(state["id"]) / "workers" / (task["id"] + ".jsonl")
                             path.parent.mkdir(parents=True, exist_ok=True)
                             with path.open("a", encoding="utf-8") as stream:
-                                stream.write(json.dumps(event, ensure_ascii=False) + "\n")
+                                from .telemetry import safe_opencode_event
+                                stream.write(json.dumps(safe_opencode_event(event), ensure_ascii=False) + "\n")
                         if update:
                             if update.get("pid"):
                                 update["process_identity"] = process_identity(update["pid"])
@@ -190,9 +239,33 @@ class Engine:
         except Exception as exc:
             message = f"WORKER ERROR: {type(exc).__name__}: {exc}. Worker may have performed partial side effects."
             result = WorkerResult(message, message, False, None, False)
+        self.telemetry.task(run_id, task['id'], status='completed' if result.succeeded else 'failed')
+        self.telemetry.event(run_id, 'task.finished', task_id=task['id'], attempt_id=worker_attempt,
+            payload={'status': 'completed' if result.succeeded else 'failed'})
+        if result.session_id:
+            self._recover_sessions(run_id, task['id'], result.session_id, task.get('selected_model'))
+            self.telemetry.event(run_id, 'session.finished' if result.cost_complete else 'session.incomplete', task_id=task['id'],
+                payload={'session_id': result.session_id})
+        elif state['mode'] != 'mock' and not isinstance(self.worker, OpenCodeWorker):
+            ident = 'call_' + uuid.uuid4().hex
+            self.telemetry.update_call(ident, run_id=run_id, task_id=task['id'], attempt_id=worker_attempt,
+                actor_role='worker', model_id=task.get('selected_model'), accounting_status='unknown')
+            self.telemetry.charge(ident, 'default', None, 'opencode_observed', result.cost_usd)
+        if not result.cost_complete and isinstance(self.worker, OpenCodeWorker):
+            self.telemetry.event(run_id, 'session.incomplete', task_id=task['id'], payload={'reason': 'incomplete_stream', 'session_id': result.session_id})
+        if state['mode'] == 'mock':
+            ident = 'call_' + uuid.uuid4().hex
+            self.telemetry.update_call(ident, run_id=run_id, task_id=task['id'], attempt_id=worker_attempt, actor_role='worker')
+            self.telemetry.charge(ident, 'default', None, 'mock', 0)
         return task, result
 
     def _dispatch(self, state: dict[str, Any], decision: dict[str, Any]) -> None:
+        if self.telemetry is None:
+            from .telemetry import Recorder
+            state.setdefault('telemetry_run_id', 'run_' + uuid.uuid4().hex)
+            self.attempt_id = 'attempt_' + uuid.uuid4().hex
+            self.telemetry = Recorder(state)
+            self.telemetry.run(state['telemetry_run_id'], task_root_id=state['id'])
         tasks = decision["tasks"]
         count = len(tasks)
         limits = self.cfg["limits"]
@@ -229,6 +302,12 @@ class Engine:
         state["events"].append({"kind": "dispatch", "at": utcnow(), "round": state["round"], "tasks": tasks})
         assignments = state.setdefault("assignments", {})
         for task in tasks:
+            self.telemetry.task(state['telemetry_run_id'], task['id'], parent_task_id=state['id'], status='queued')
+            self.telemetry.event(state['telemetry_run_id'], 'task.created', task_id=task['id'],
+                parent_task_id=state['id'], attempt_id=self.attempt_id)
+            if task.get('retry_of'):
+                self.telemetry.event(state['telemetry_run_id'], 'task.retried', task_id=task['id'],
+                    attempt_id=self.attempt_id, payload={'prior_task_id': task['retry_of'], 'reason': 'director_retry'})
             assignments[task["id"]] = {"prompt": task["prompt"], "read_only": task.get("read_only", False),
                                        "status": "queued", "created_at": utcnow(),
                                        "retry_root": task["retry_root"], "retry_of": task.get("retry_of"),
@@ -245,9 +324,10 @@ class Engine:
         def record(task: dict[str, Any], result: WorkerResult, started: float) -> None:
             amount, source = self._cost(result.cost_usd if result.cost_complete else None, result.usage, task["selected_model"], state["mode"])
             self._record_cost(state, amount, source)
+            self._estimate_missing_steps(state['telemetry_run_id'], task['id'], task['selected_model'], state['mode'])
             path = save_worker_output(state, task["id"], result.full_output)
             state["events"].append({
-                "kind": "worker", "id": task["id"], "at": utcnow(),
+                "kind": "worker", "id": task["id"], "at": utcnow(), "telemetry_call_id": "stream",
                 "ok": result.succeeded, "summary": result.summary,
                 "report_chars": len(result.full_output),
                 "output_path": path, "session_id": result.session_id,
@@ -289,6 +369,8 @@ class Engine:
                 if not state["budget_cost_complete"] or state["budget_reported_usd"] + state["budget_estimated_usd"] >= float(limits["budget_usd"]):
                     for pending in tasks:
                         if assignments[pending["id"]]["status"] == "queued":
+                            self.telemetry.task(state["telemetry_run_id"], pending["id"], status="blocked")
+                            self.telemetry.event(state["telemetry_run_id"], "task.blocked", task_id=pending["id"], payload={"reason": "budget"})
                             assignments[pending["id"]].update({"status": "blocked", "note": "Worker budget reached before this assignment started."})
                     state.pop("coordinator_pid", None)
                     state.pop("coordinator_identity", None)
@@ -305,11 +387,69 @@ class Engine:
         state.pop("coordinator_identity", None)
         save(state)
 
+    def _estimate_missing_steps(self, run_id, task_id, model, mode):
+        if not self.telemetry.store:
+            return
+        for call in self.telemetry.calls(run_id) or []:
+            if call.get('task_id') != task_id or call.get('provider_id') not in ('opencode', 'openrouter'):
+                continue
+            if self.telemetry.call_charges(call['call_id']):
+                continue
+            usage = call.get('usage') or {}
+            if usage.get('normalization_method') != 'opencode-v1-exclusive-input-and-output':
+                continue
+            amount, source = self._cost(None, {'token_events': [usage['source_raw']],
+                'token_events_complete': usage['usage_complete']}, model, mode)
+            if source == 'estimated':
+                self.telemetry.charge(call['call_id'], 'default', call.get('generation_id'), 'estimated', amount)
+
+    def _recover_sessions(self, run_id, task_id, session_id, model):
+        url = self.cfg.get('telemetry', {}).get('opencode_url')
+        if url:
+            from .recovery import import_session_tree
+            from .observe import session_fetcher
+            try:
+                fetch = session_fetcher(url)
+                import_session_tree(self.telemetry, run_id, task_id, session_id, fetch, model=model)
+            except (ValueError, OSError):
+                self.telemetry.event(run_id, 'session.incomplete', task_id=task_id,
+                    payload={'session_id': session_id, 'reason': 'session_api_unavailable'})
+
     def run(self, state: dict[str, Any], *, already_locked: bool = False) -> dict[str, Any]:
         if already_locked:
+            return self._instrumented_run(state)
+        with execution_lock(state['id']):
+            return self._instrumented_run(state)
+
+    def _instrumented_run(self, state: dict[str, Any]) -> dict[str, Any]:
+        from .telemetry import Recorder, digest
+        state.setdefault('telemetry_run_id', 'run_' + uuid.uuid4().hex)
+        self.attempt_id = 'attempt_' + uuid.uuid4().hex
+        self.telemetry = Recorder(state, strict=self.cfg.get('telemetry', {}).get('strict', False))
+        run_id = state['telemetry_run_id']
+        from .ledger import git_snapshot
+        workdir = self.cfg['worker'].get('working_directory')
+        revision = git_snapshot(workdir) if workdir else None
+        existing = next((r for r in (self.telemetry.runs() or []) if r['run_id'] == run_id), {}) if self.telemetry.store else {}
+        fields = {} if existing.get('suite_id') else {'config_sha256': digest(self.cfg), 'repo_revision': revision, 'task_root_id': state['id']}
+        self.telemetry.run(run_id, **fields, mode=state['mode'])
+        self.telemetry.task(run_id, state['id'], status='running',
+            parent_task_id=existing.get('task_root_id') if existing.get('suite_id') else None)
+        self.telemetry.event(run_id, 'run.started', task_id=state['id'], attempt_id=self.attempt_id)
+        try:
             return self._run(state)
-        with execution_lock(state["id"]):
-            return self._run(state)
+        finally:
+            for check_id, entry in state.get('ledger', {}).items():
+                self.telemetry.event(run_id, 'verify.finished', task_id=state['id'], payload={
+                    'check_id': check_id, 'status': 'unverified', 'reported_status': entry.get('status'),
+                    'evidence_source': 'worker_report', 'evidence_sha256': digest(entry.get('evidence', []))})
+            self.telemetry.task(run_id, state['id'], status=state['status'])
+            self.telemetry.run(run_id, status=state['status'], finished_utc=utcnow(),
+                measurement_incomplete=bool(state.get('telemetry_incomplete')), telemetry_overhead={
+                    'record_seconds': self.telemetry.store.elapsed_seconds if self.telemetry.store else None,
+                    'record_cpu_seconds': self.telemetry.store.cpu_seconds if self.telemetry.store else None})
+            self.telemetry.event(run_id, 'run.finished', task_id=state['id'], payload={'status': state['status']})
+            save(state)
 
     def _run(self, state: dict[str, Any]) -> dict[str, Any]:
         initialize(state)
@@ -331,6 +471,7 @@ class Engine:
         if isinstance(self.director, MockDirector):
             self.director.calls = state["director_calls"]
         while True:
+            self.telemetry.event(state['telemetry_run_id'], 'monitor.heartbeat', task_id=state['id'], payload={'status': state['status']})
             try:
                 self._check_budget(state)
                 decision = self._premium_decision(state)
@@ -400,6 +541,7 @@ class Engine:
                     save(state)
                     return state
             except (BudgetError, DecisionError) as exc:
+                self.telemetry.event(state['telemetry_run_id'], 'monitor.intervention', task_id=state['id'], payload={'reason': type(exc).__name__})
                 state["status"] = "budget_exhausted" if isinstance(exc, BudgetError) else "error"
                 state["answer"] = str(exc)
                 state["events"].append({"kind": "note", "at": utcnow(), "message": str(exc)})

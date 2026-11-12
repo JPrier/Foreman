@@ -102,3 +102,64 @@ def reconcile(state: dict[str, Any]) -> str:
                        "Interrupted assignments require inspection before retrying; side effects and accounting are unknown.")
     save(state)
     return "worker_running" if active else "interrupted"
+
+
+def import_session_tree(store, run_id, task_id, session_id, fetch, *, model=None):
+    """Recursively backfill native sessions. fetch(path) is a versioned API adapter.
+
+    Supported wire contract: GET /session/{id}/message -> {info,parts}[];
+    GET /session/{id}/children -> Session[]. Unknown shapes fail visibly.
+    """
+    import urllib.parse
+    from .telemetry import digest
+    visited = set()
+
+    def visit(ident, parent=None):
+        if ident in visited:
+            return
+        visited.add(ident)
+        store.event(run_id, 'session.linked', task_id=task_id,
+            event_id=digest([run_id, ident, 'linked']), payload={'session_id': ident, 'parent_session_id': parent})
+        try:
+            path = '/session/' + urllib.parse.quote(ident, safe='')
+            messages = fetch(path + '/message')
+            children = fetch(path + '/children')
+            if not isinstance(messages, list) or not isinstance(children, list):
+                raise ValueError('Unsupported OpenCode session response')
+            terminal = False
+            for message in messages:
+                info, parts = message['info'], message['parts']
+                if info.get('role') != 'assistant':
+                    continue
+                if not isinstance(parts, list):
+                    raise ValueError('Unsupported OpenCode parts')
+                steps = [p for p in parts if p.get('type') == 'step-finish']
+                if not steps and (info.get('tokens') or info.get('cost') is not None):
+                    # A retained assistant message can replace a missing stream step.
+                    # Use message identity; never sum message aggregates with known parts.
+                    existing = [c for c in store.calls(run_id) if c.get('session_id') == ident and c.get('message_id') == info.get('id')]
+                    if not existing:
+                        steps = [{'id': info['id'], 'messageID': info['id'], 'tokens': info.get('tokens'),
+                                  'cost': info.get('cost'), 'reason': info.get('finish')}]
+                terminal = info.get('finish') == 'stop' or any(p.get('reason') == 'stop' for p in steps)
+                for part in steps:
+                    native_model = info.get('modelID') or model
+                    if info.get('providerID') == 'openrouter' and native_model and not native_model.startswith('openrouter/'):
+                        native_model = 'openrouter/' + native_model
+                    part = {**part, 'messageID': part.get('messageID') or info['id']}
+                    store.opencode(run_id, task_id, {'sessionID': ident, 'type': 'step_finish', 'part': part},
+                        role='compaction' if info.get('summary') else 'worker', model=native_model)
+            store.event(run_id, 'session.recovered' if terminal else 'session.incomplete', task_id=task_id,
+                event_id=digest([run_id, ident, 'history_terminal', terminal]),
+                payload={'session_id': ident, 'reason': 'terminal_history' if terminal else 'missing_terminal_history'})
+            for child in children:
+                if not isinstance(child, dict) or not isinstance(child.get('id'), str):
+                    raise ValueError('Unsupported child session')
+                visit(child['id'], ident)
+            store.event(run_id, 'session.enumerated', task_id=task_id,
+                event_id=digest([run_id, ident, 'enumerated']), payload={'session_id': ident})
+        except (OSError, ValueError, KeyError, TypeError):
+            store.event(run_id, 'session.incomplete', task_id=task_id,
+                event_id=digest([run_id, ident, 'enumeration_failed']), payload={'session_id': ident, 'reason': 'session_api_or_schema_failure'})
+    visit(session_id)
+    return sorted(visited)

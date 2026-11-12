@@ -23,7 +23,7 @@ class IntegrationRegressionTests(unittest.TestCase):
             OpenCodeWorker(cfg).call('inspect', True)
         self.assertTrue(run.call_args.kwargs['auto_approve'])
 
-    def test_cost_prefers_reported_and_estimates_excluding_cache(self):
+    def test_cost_prefers_reported_and_charges_cache_reads(self):
         engine = Engine(copy.deepcopy(DEFAULTS), log=lambda _: None)
         self.assertEqual(engine._cost(0.2, {}, 'missing/model', 'live'), (0.2, 'reported'))
         payload = {'data':[{'id':'provider/model','pricing':{'prompt':'0.01','completion':'0.02'}}]}
@@ -31,6 +31,6 @@ class IntegrationRegressionTests(unittest.TestCase):
         with patch('smart_harness.engine.urllib.request.urlopen', return_value=io.BytesIO(json.dumps(payload).encode())):
             value, source = engine._cost(None, usage, 'openrouter/provider/model', 'live')
         self.assertEqual(source, 'estimated')
-        self.assertAlmostEqual(value, 0.2)
+        self.assertAlmostEqual(value, 1.2)
 
 if __name__ == '__main__': unittest.main()

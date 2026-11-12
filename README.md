@@ -165,3 +165,13 @@ For the ledger, report retrieval, recovery limits, model routing and budget beha
 - OpenCode v2 CLI and agents: https://dev.opencode.ai/v2/docs/cli/commands/ and https://dev.opencode.ai/v2/docs/agents/
 - OpenRouter API model: https://openrouter.ai/anthropic/claude-opus-5.5
 - OpenRouter structured output format: https://openrouter.ai/docs/features/structured-outputs
+
+## Benchmarking and observability
+
+Normal runs record per-call usage and cost provenance in local SQLite. Use
+`smart-coder run "your task" --metrics-json`, `smart-coder observe tree --run ID`,
+and `smart-coder costs reconcile --run ID` to inspect attribution and billing.
+`smart-coder bench run` executes pinned, isolated repeated trials and
+`smart-coder bench compare` reports quality/cost/latency with explicit coverage gates.
+See [benchmarking and accounting](docs/benchmarking.md) for commands, suite format,
+trusted scoring, token conventions, the read-only API, and compatibility limits.

@@ -1,0 +1,2 @@
+{"sessionID": "ses_root", "type": "step_finish", "part": {"id": "p1", "messageID": "m1", "reason": "tool-calls", "cost": 0.1, "tokens": {"input": 10, "output": 4, "reasoning": 2, "cache": {"read": 5, "write": 0}}}}
+{"type":
